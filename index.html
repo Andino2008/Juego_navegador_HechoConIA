@@ -10,6 +10,9 @@
             overflow: hidden;
             background-color: #000;
             font-family: 'Courier New', Courier, monospace; /* Estilo retro / RPG */
+            /* LA MAGIA: Bloquea la selección azul de Windows */
+            user-select: none; 
+            -webkit-user-select: none; /* Para navegadores basados en Safari/Chrome */
         }
         #blocker {
             position: absolute;
@@ -113,6 +116,64 @@
             display: grid; grid-template-columns: repeat(6, 50px); grid-template-rows: repeat(6, 50px); gap: 2px;
             background: #333; padding: 4px; border: 4px solid #111; border-bottom-color: #777; border-right-color: #777;
         }
+        /* Stats panel layout: coloca la grilla a la izquierda y el panel a la derecha */
+        #inventory-body {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        /* Ajuste de la grilla dentro del nuevo layout */
+        #inventory-grid {
+            width: auto;
+            display: grid;
+            grid-template-columns: repeat(6, 50px);
+            grid-template-rows: repeat(6, 50px);
+            gap: 2px;
+            background: #333;
+            padding: 4px;
+            border: 4px solid #111;
+            border-bottom-color: #777;
+            border-right-color: #777;
+        }
+
+        /* Panel de estadísticas a la derecha, estilo Windows95 / retro */
+        #stats-panel {
+            width: 260px;
+            min-height: 220px;
+            background: #ddd;
+            border: 6px solid #ccc;
+            border-bottom-color: #555;
+            border-right-color: #555;
+            padding: 10px;
+            box-sizing: border-box;
+            font-family: 'Courier New', Courier, monospace;
+            color: #000;
+            text-shadow: none;
+            pointer-events: none;
+        }
+
+        #stats-panel .stats-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-align: center;
+            background: #bbb;
+            padding: 6px;
+            border: 2px solid #999;
+            border-bottom-color: #666;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: #eee;
+            border: 2px inset #ccc;
+            color: #111;
+        }
+        .stat-label { opacity: 0.9; }
+        .stat-value { font-weight: bold; }
         .inv-slot { 
             background: #555; border: 4px solid #222; border-bottom-color: #888; border-right-color: #888; 
             display: flex; align-items: center; justify-content: center; cursor: pointer; 
@@ -176,7 +237,34 @@
 
     <div id="inventory-container">
         <div id="inventory-title">Inventario</div>
-        <div id="inventory-grid"></div>
+
+        <div id="inventory-body">
+            <div id="inventory-grid"></div>
+
+            <div id="stats-panel">
+                <div class="stats-title">Estadísticas del Personaje</div>
+
+                <div class="stat-row">
+                    <div class="stat-label">Nivel</div>
+                    <div id="level-value" class="stat-value">1</div>
+                </div>
+
+                <div class="stat-row">
+                    <div class="stat-label">Experiencia</div>
+                    <div id="xp-value" class="stat-value">0</div>
+                </div>
+
+                <div class="stat-row">
+                    <div class="stat-label">Daño de Arma</div>
+                    <div id="weapon-damage-value" class="stat-value">0</div>
+                </div>
+
+                <div style="margin-top:8px; font-size:12px; text-align:center; color:#222;">
+                    Última actualización al abrir inventario
+                </div>
+            </div>
+        </div>
+
         <div id="inv-tooltip"></div>
     </div>
 
@@ -191,7 +279,7 @@
         <div id="health-bar">
             <div id="health-fill"></div>
         </div>
-        <span id="sp-text">SP: 100 / 100</span>
+        <span id="sp-text">SP: 200 / 200</span>
         <div id="stamina-bar">
             <div id="stamina-fill"></div>
         </div>
@@ -215,7 +303,11 @@
         let npcs = [];
         
         let health = 100;
-        let stamina = 200;
+        let playerXP = 0;
+        let playerLevel = 1;
+        let levelUpMessageTimer = 0;
+        let maxStamina = 200;
+        let stamina = maxStamina;
         let isDead = false;
         let isFlashlightOn = true;
         let flashlightIntensity = 90; // Puedes cambiar este número para ajustar el brillo a gusto
@@ -260,6 +352,10 @@
         // --- Variables de Enemigos y Combate ---
         let activeEnemies = [];
         let hasDealtDamage = false; // Evita multi-hits en un solo swing
+
+        let openedChests = new Set(); // Registro de coordenadas de altares looteados
+
+        let currentLevelGroup = null; // Contenedor global del nivel
 
         // --- Variables de Head Bobbing ---
         let bobbingTimer = 0;
@@ -409,7 +505,27 @@
             }
         }
         
-        // --- SISTEMA DE ARMAS (Clases) ---
+            // --- Actualización de UI de Estadísticas ---
+            function updateStatsUI() {
+                const level = (typeof playerLevel !== 'undefined') ? playerLevel : (window.playerLevel || 1);
+                const xp = (typeof playerXP !== 'undefined') ? playerXP : (window.playerXP || 0);
+
+                const activeItem = inventorySlots[activeHotbarIndex];
+                let weaponDamage = fistsWeapon.damageCombo1;
+                if (activeItem && activeItem.name === 'Espada de Hierro') {
+                    weaponDamage = swordWeapon.damageCombo1;
+                }
+
+                const elLevel = document.getElementById('level-value');
+                const elXP = document.getElementById('xp-value');
+                const elDmg = document.getElementById('weapon-damage-value');
+
+                if (elLevel) elLevel.innerText = String(level);
+                if (elXP) elXP.innerText = String(xp);
+                if (elDmg) elDmg.innerText = String(weaponDamage);
+            }
+
+            // --- SISTEMA DE ARMAS (Clases) ---
         class Weapon {
             constructor(name, range, damageCombo1, damageCombo2, damageCombo3) {
                 this.name = name;
@@ -432,19 +548,32 @@
                 this.mesh = null;
                 this.flashTimer = 0;
                 this.baseColor = 0xffffff;
+                this.velocity = new THREE.Vector3(); // física simple para knockback
+                this.xpValue = 0;
             }
-            takeDamage(amount) {
+            takeDamage(amount, sourcePos = null) {
                 if (this.isDead) return;
                 this.hp -= amount;
                 this.flashTimer = 0.1; // 100ms de parpadeo rojo
                 console.log(`[Combate] ${this.id} recibió ${amount} daño. HP restante: ${this.hp}/${this.maxHp}`);
-                
+                // Aplicar knockback físico si conocemos la fuente del daño
+                if (this.mesh && sourcePos) {
+                    const knockDir = new THREE.Vector3().subVectors(this.mesh.position, sourcePos).setY(0);
+                    if (knockDir.lengthSq() > 0.0001) {
+                        knockDir.normalize();
+                        // Fuerza proporcional al daño con tope para evitar desplazamientos absurdos
+                        const kbStrength = Math.min(8, Math.max(1, amount * 0.35));
+                        this.velocity.add(knockDir.multiplyScalar(kbStrength));
+                    }
+                }
+
                 if (this.hp <= 0) {
                     this.isDead = true;
                     if (this.mesh && this.mesh.parent) {
                         this.mesh.parent.remove(this.mesh);
                     }
                     console.log(`[Combate] ¡${this.id} ha muerto!`);
+                    addXP(this.xpValue);
                 }
             }
             update(delta, time, playerPos) {
@@ -460,6 +589,23 @@
                 } else if (this.mesh.material) {
                     this.mesh.material.color.setHex(flashColor);
                 }
+
+                // Integrar física simple (velocidad y fricción) para knockback y empujes suaves
+                if (this.velocity.lengthSq() > 0.000001) {
+                    // Aplicar movimiento por física con comprobación de colisión en XZ
+                    const oldX = this.mesh.position.x;
+                    const oldZ = this.mesh.position.z;
+
+                    const moveX = this.velocity.x * delta;
+                    const moveZ = this.velocity.z * delta;
+
+                    if (!checkMapCollision(oldX + moveX, oldZ)) this.mesh.position.x += moveX;
+                    if (!checkMapCollision(this.mesh.position.x, oldZ + moveZ)) this.mesh.position.z += moveZ;
+
+                    // Aplicar fricción exponencial para que el empuje se disipe
+                    this.velocity.multiplyScalar(Math.max(0, 1 - 6.0 * delta));
+                    if (this.velocity.length() < 0.01) this.velocity.set(0, 0, 0);
+                }
             }
         }
 
@@ -471,6 +617,7 @@
                 const mat = new THREE.MeshLambertMaterial({ color: this.baseColor });
                 this.mesh = new THREE.Mesh(geo, mat);
                 this.mesh.position.copy(position);
+                this.xpValue = 10;
                 this.originY = position.y;
             }
             update(delta, time, playerPos) {
@@ -488,6 +635,8 @@
                 super(id, position, 150);
                 this.baseColor = 0x3e5c32; // Verde podrido
                 this.speed = 2.0; // Velocidad balanceada (caminata lenta y tétrica)
+                this.attackCooldown = 0.0; // Temporizador para ataques cuerpo a cuerpo
+                this.xpValue = 35;
                 
                 this.mesh = new THREE.Group();
                 const mat = new THREE.MeshLambertMaterial({ color: this.baseColor });
@@ -525,6 +674,9 @@
                     // Mirar al jugador ignorando el eje Y para no inclinarse hacia arriba/abajo
                     this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
                     
+                    // Reducir cooldown de ataque
+                    if (this.attackCooldown > 0) this.attackCooldown = Math.max(0, this.attackCooldown - delta);
+
                     if (dist > 1.8) {
                         // Persecución con check de colisiones
                         const dir = new THREE.Vector3().subVectors(playerPos, this.mesh.position).normalize();
@@ -538,8 +690,11 @@
                         if (!checkMapCollision(newX, oldZ)) this.mesh.position.x = newX;
                         if (!checkMapCollision(oldX, newZ)) this.mesh.position.z = newZ;
                     } else {
-                        // Atacar al jugador si está a rango de mordisco
-                        takeDamage(15 * delta);
+                        // Atacar al jugador si está a rango de mordisco (solo una vez por cooldown)
+                        if (this.attackCooldown <= 0) {
+                            takeDamage(15); // golpe instantáneo
+                            this.attackCooldown = 1.5; // 1.5 segundos entre ataques
+                        }
                     }
                 }
             }
@@ -685,6 +840,7 @@
                 if (event.code === 'KeyE' && !event.repeat) {
                     if (controls.isLocked && !isInventoryOpen) {
                         isInventoryOpen = true;
+                    updateStatsUI();
                         document.getElementById('inventory-container').style.display = 'flex';
                         controls.unlock();
                     } else if (isInventoryOpen) {
@@ -713,9 +869,55 @@
                     case 'KeyA': moveLeft = true; break;
                     case 'KeyS': moveBackward = true; break;
                     case 'KeyD': moveRight = true; break;
+                    case 'KeyR':
                     case 'KeyF':
-                        isFlashlightOn = !isFlashlightOn;
-                        flashlight.visible = isFlashlightOn;
+                        if (event.code === 'KeyF') {
+                            isFlashlightOn = !isFlashlightOn;
+                            flashlight.visible = isFlashlightOn;
+                        }
+                        
+                        // Lógica de Interacción con Altares (Cofres)
+                        if (controls.isLocked && !isDead) {
+                            const pos = controls.getObject().position;
+                            const pCol = Math.round(pos.x / cellSize) + offset;
+                            const pRow = Math.round(pos.z / cellSize) + offset;
+                            
+                            // Revisar las celdas adyacentes (3x3 alrededor del jugador)
+                            for (let r = pRow - 1; r <= pRow + 1; r++) {
+                                for (let c = pCol - 1; c <= pCol + 1; c++) {
+                                    if (r >= 0 && r < mapGrid.length && c >= 0 && c < mapGrid[0].length) {
+                                        if (mapGrid[r][c] === 3) { // Bloque Tipo 3 (Altar)
+                                            const chestId = `${r},${c}`;
+                                            if (!openedChests.has(chestId)) {
+                                                const px = (c - offset) * cellSize;
+                                                const pz = (r - offset) * cellSize;
+                                                const dist = Math.hypot(pos.x - px, pos.z - pz);
+                                                
+                                                if (dist < 3.5) {
+                                                    const lootTable = [
+                                                        { name: "Poción de Vida", color: 0xff0000 },
+                                                        { name: "Espada de Runas", color: 0x00ffff },
+                                                        { name: "Escudo Viejo", color: 0x8b4513 }
+                                                    ];
+                                                    const loot = lootTable[Math.floor(Math.random() * lootTable.length)];
+                                                    
+                                                    let emptyIndex = inventorySlots.indexOf(null);
+                                                    if (emptyIndex !== -1) {
+                                                        inventorySlots[emptyIndex] = loot;
+                                                        updateInventoryUI();
+                                                        openedChests.add(chestId);
+                                                        console.log(`[Interacción] Abriste un altar y obtuviste: ${loot.name}`);
+                                                    } else {
+                                                        console.log(`[Interacción] Tu inventario está lleno, haz espacio primero.`);
+                                                    }
+                                                    return; // Finalizar tras primera interacción exitosa
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         break;
                     case 'ShiftLeft': moveRun = true; break;
                     case 'Space':
@@ -806,47 +1008,77 @@
             floor.rotation.x = -Math.PI / 2;
             scene.add(floor);
 
-            // Materiales Compartidos
+            // Inicializar el Mapa
+            generateLevel(mapGrid);
+            
+            updateInventoryUI();
+
+            // Deshabilitar antialiasing para un look más pixeleado/retro
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // --- SISTEMA DE GENERACIÓN DE NIVELES ---
+        function generateLevel(grid) {
+            // 1. Limpieza de escena anterior (preparación para transición de niveles)
+            if (currentLevelGroup) {
+                scene.remove(currentLevelGroup);
+            }
+            currentLevelGroup = new THREE.Group();
+            
+            crystals = [];
+            npcs = [];
+            worldItems = [];
+            
+            activeEnemies.forEach(e => {
+                if (e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
+            });
+            activeEnemies = [];
+            
+            openedChests.clear(); // Limpiamos el registro si cargamos otro nivel
+
+            // 2. Definición de Materiales locales para el nivel
             const matWall = new THREE.MeshLambertMaterial({ color: 0x4a4a4a }); // Piedra gris
-            const matPillar = new THREE.MeshLambertMaterial({ color: 0x353535 }); // Piedra más oscura
+            const matPillar = new THREE.MeshLambertMaterial({ color: 0x353535 }); // Piedra oscura
             const matHouseWall = new THREE.MeshLambertMaterial({ color: 0x5a5a5a }); // Ladrillo casa
-            const npcMat = new THREE.MeshLambertMaterial({ color: 0x1c1c1c }); // Túnica oscura
+            const npcMat = new THREE.MeshLambertMaterial({ color: 0x1c1c1c }); // Túnica
             const crystalGeo = new THREE.OctahedronGeometry(0.6, 0);
             const crystalMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Verde radiactivo
 
-            // Textos de los NPCs
             const npcTexts = [
-                { x: 15, z: -12, text: "El tiempo se detuvo aquí hace siglos..." },
-                { x: -18, z: -8, text: "No busques la salida, no hay nada afuera." },
-                { x: 5, z: 22, text: "Los cristales recuerdan a los que cayeron..." },
-                { x: -10, z: 15, text: "La niebla devorará todo lo que dejamos atrás." }
+                { text: "El tiempo se detuvo aquí hace siglos..." },
+                { text: "No busques la salida, no hay nada afuera." },
+                { text: "Los cristales recuerdan a los que cayeron..." },
+                { text: "La niebla devorará todo lo que dejamos atrás." }
             ];
             let npcCounter = 0;
+            
+            // 3. Generación Estructural (Bloques Estáticos)
+            const currentOffset = Math.floor(grid.length / 2);
+            
+            for (let row = 0; row < grid.length; row++) {
+                for (let col = 0; col < grid[row].length; col++) {
+                    const type = grid[row][col];
+                    if (type === 0) continue;
 
-            // Generación Basada en Matriz
-            for (let row = 0; row < mapGrid.length; row++) {
-                for (let col = 0; col < mapGrid[row].length; col++) {
-                    const type = mapGrid[row][col];
-                    if (type === 0) continue; // Pasillos y áreas seguras
-
-                    // Posicionamiento en el grid global (0,0 es el centro)
-                    const px = (col - offset) * cellSize;
-                    const pz = (row - offset) * cellSize;
+                    const px = (col - currentOffset) * cellSize;
+                    const pz = (row - currentOffset) * cellSize;
 
                     if (type === 1) {
-                        // Muro Alto Opresivo
                         const geo = new THREE.BoxGeometry(cellSize, 10, cellSize);
                         const mesh = new THREE.Mesh(geo, matWall);
-                        mesh.position.set(px, 5, pz); // Altura centrada a 5 para que toque el suelo
-                        scene.add(mesh);
+                        mesh.position.set(px, 5, pz);
+                        currentLevelGroup.add(mesh);
                     } else if (type === 2) {
-                        // Columna Espectral (Retro Hexagonal)
                         const geo = new THREE.CylinderGeometry(1.5, 1.5, 10, 6);
                         const mesh = new THREE.Mesh(geo, matPillar);
                         mesh.position.set(px, 5, pz);
-                        scene.add(mesh);
+                        currentLevelGroup.add(mesh);
                     } else if (type === 3) {
-                        // Altar
                         const group = new THREE.Group();
                         const baseGeo = new THREE.BoxGeometry(4, 1, 4);
                         const baseMesh = new THREE.Mesh(baseGeo, matPillar);
@@ -858,14 +1090,12 @@
                         group.add(baseMesh);
                         group.add(topMesh);
                         group.position.set(px, 0, pz);
-                        scene.add(group);
+                        currentLevelGroup.add(group);
                         
-                        // Techo sobre el altar si está en interior
                         const roofMesh = new THREE.Mesh(new THREE.BoxGeometry(cellSize, 0.5, cellSize), matHouseWall);
                         roofMesh.position.set(px, 4, pz);
-                        scene.add(roofMesh);
+                        currentLevelGroup.add(roofMesh);
                     } else if (type === 4) {
-                        // Entidad NPC Estratégica
                         const group = new THREE.Group();
                         const headGeo = new THREE.SphereGeometry(0.4, 8, 8);
                         const head = new THREE.Mesh(headGeo, npcMat);
@@ -877,42 +1107,36 @@
                         group.add(head);
                         group.add(body);
                         group.position.set(px, 0, pz);
-                        scene.add(group);
+                        currentLevelGroup.add(group);
                         
-                        // Techo sobre el NPC para cerrar la casa
                         const roofMesh = new THREE.Mesh(new THREE.BoxGeometry(cellSize, 0.5, cellSize), matHouseWall);
                         roofMesh.position.set(px, 4, pz);
-                        scene.add(roofMesh);
+                        currentLevelGroup.add(roofMesh);
                         
-                        // Asignar el texto según el orden de creación
                         let text = npcTexts[npcCounter % npcTexts.length].text;
                         npcCounter++;
                         npcs.push({ group: group, originY: 0, text: text });
                     } else if (type === 5) {
-                        // Trampa de Cristal Verde
                         const crystal = new THREE.Mesh(crystalGeo, crystalMat);
                         crystal.position.set(px, 1.2, pz);
-                        scene.add(crystal);
+                        currentLevelGroup.add(crystal);
                         crystals.push({ mesh: crystal, originY: 1.2 });
                     } else if (type === 6) {
-                        // Pared Exterior de Casa (Sólida)
                         const geo = new THREE.BoxGeometry(cellSize, 5, cellSize);
                         const mesh = new THREE.Mesh(geo, matHouseWall);
                         mesh.position.set(px, 2.5, pz);
-                        scene.add(mesh);
+                        currentLevelGroup.add(mesh);
                     } else if (type === 7 || type === 8) {
-                        // Techo interior opresivo (7) y techo sobre la Puerta (8)
-                        // Suspendido a la altura de la cabeza (Y=4). El suelo queda libre.
                         const geo = new THREE.BoxGeometry(cellSize, 0.5, cellSize);
                         const mesh = new THREE.Mesh(geo, matHouseWall);
                         mesh.position.set(px, 4.0, pz);
-                        scene.add(mesh);
+                        currentLevelGroup.add(mesh);
                     }
                 }
             }
 
-            // Generación de Ítems en el mundo
-            const itemGeo = new THREE.BoxGeometry(2, 0.2, 2); // Chato en Y
+            // 4. Poblado de Ítems
+            const itemGeo = new THREE.BoxGeometry(2, 0.2, 2);
             const itemData = [
                 { name: "Cubo 1", color: 0x0000ff, x: 12, z: 0 },
                 { name: "Cubo 2", color: 0xff0000, x: -30, z: 0 },
@@ -923,41 +1147,49 @@
                 const mat = new THREE.MeshLambertMaterial({ color: data.color });
                 const mesh = new THREE.Mesh(itemGeo, mat);
                 mesh.position.set(data.x, 0.1, data.z);
-                scene.add(mesh);
+                currentLevelGroup.add(mesh); // Asegurado dentro de Group
                 worldItems.push({ mesh: mesh, name: data.name, color: data.color });
             });
             
-            // --- Spawn de Enemigos de Prueba (Coordenadas corregidas en el pasillo inicial) ---
-            const dummy1 = new TrainingDummy("Muñeco de Práctica A", new THREE.Vector3(0, 1.2, -12)); // Justo adelante tuyo
-            scene.add(dummy1.mesh);
-            activeEnemies.push(dummy1);
+            // 5. Spawn de Enemigos
+            const dummy1 = new TrainingDummy("Muñeco de Práctica A", new THREE.Vector3(0, 1.2, -12));
+            currentLevelGroup.add(dummy1.mesh); activeEnemies.push(dummy1);
 
-            const dummy2 = new TrainingDummy("Muñeco de Práctica B", new THREE.Vector3(6, 1.2, -12)); // Un toque a la derecha
-            scene.add(dummy2.mesh);
-            activeEnemies.push(dummy2);
+            const dummy2 = new TrainingDummy("Muñeco de Práctica B", new THREE.Vector3(6, 1.2, -12));
+            currentLevelGroup.add(dummy2.mesh); activeEnemies.push(dummy2);
             
-            // --- Spawn de Zombies ---
-            const zombie1 = new Zombie("Zombie 1", new THREE.Vector3(0, 0.0, -30)); // Altura al ras del suelo
-            scene.add(zombie1.mesh);
-            activeEnemies.push(zombie1);
+            const zombie1 = new Zombie("Zombie 1", new THREE.Vector3(0, 0.0, -30));
+            currentLevelGroup.add(zombie1.mesh); activeEnemies.push(zombie1);
             
             const zombie2 = new Zombie("Zombie 2", new THREE.Vector3(-20, 0.0, -15));
-            scene.add(zombie2.mesh);
-            activeEnemies.push(zombie2);
+            currentLevelGroup.add(zombie2.mesh); activeEnemies.push(zombie2);
             
             const zombie3 = new Zombie("Zombie 3", new THREE.Vector3(20, 0.0, -40));
-            scene.add(zombie3.mesh);
-            activeEnemies.push(zombie3);
+            currentLevelGroup.add(zombie3.mesh); activeEnemies.push(zombie3);
             
-            updateInventoryUI();
+            // Por último, volcamos el contenedor entero en la escena
+            scene.add(currentLevelGroup);
+            return currentLevelGroup;
+        }
 
-            // Deshabilitar antialiasing para un look más pixeleado/retro
-            renderer = new THREE.WebGLRenderer({ antialias: false });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+        function addXP(amount) {
+            playerXP += amount;
+            let xpNeeded = playerLevel * 100;
+            console.log(`[Sistema] Ganaste ${amount} XP. Total: ${playerXP} / ${xpNeeded}`);
 
-            window.addEventListener('resize', onWindowResize);
+            while (playerXP >= xpNeeded) {
+                playerXP -= xpNeeded;
+                playerLevel++;
+                xpNeeded = playerLevel * 100;
+                
+                // Recompensa: Restaurar HP al máximo
+                health = 100;
+                healthFill.style.width = health + '%';
+                hpText.innerText = `HP: ${Math.ceil(health)} / 100`;
+                
+                document.getElementById('dialogue-box').innerText = `¡Subiste al nivel ${playerLevel}!`;
+                levelUpMessageTimer = 3.0; // Mostrar el mensaje en pantalla por 3 segundos
+            }
         }
 
         function takeDamage(amount) {
@@ -1010,7 +1242,7 @@
                     let emptyIndex = inventorySlots.indexOf(null);
                     if (emptyIndex !== -1) {
                         inventorySlots[emptyIndex] = item;
-                        scene.remove(item.mesh);
+                        item.mesh.removeFromParent(); // Fix dinámico ya que ahora pertenece a currentLevelGroup
                         worldItems.splice(i, 1);
                         updateInventoryUI();
                     }
@@ -1032,11 +1264,16 @@
             });
 
             const dialogueBox = document.getElementById('dialogue-box');
-            if (closestText && !isDead) {
-                dialogueBox.innerText = closestText;
+            if (levelUpMessageTimer > 0) {
+                levelUpMessageTimer -= delta;
                 dialogueBox.style.display = 'block';
             } else {
-                dialogueBox.style.display = 'none';
+                if (closestText && !isDead) {
+                    dialogueBox.innerText = closestText;
+                    dialogueBox.style.display = 'block';
+                } else {
+                    dialogueBox.style.display = 'none';
+                }
             }
 
             if (controls.isLocked === true && !isDead) {
@@ -1081,7 +1318,7 @@
                                     if (comboStep === 2) dmg = currentWeapon.damageCombo2;
                                     else if (comboStep === 3) dmg = currentWeapon.damageCombo3;
                                     
-                                    hitEnemy.takeDamage(dmg);
+                                    hitEnemy.takeDamage(dmg, playerPos);
                                 }
                             }
                         }
@@ -1180,9 +1417,9 @@
                 } else {
                     stamina += 35 * delta; // Regen rápida quieto
                 }
-                stamina = Math.max(0, Math.min(100, stamina));
-                staminaFill.style.width = stamina + '%';
-                spText.innerText = `SP: ${Math.ceil(stamina)} / 100`;
+                stamina = Math.max(0, Math.min(maxStamina, stamina));
+                staminaFill.style.width = ((stamina / maxStamina) * 100) + '%';
+                spText.innerText = `SP: ${Math.ceil(stamina)} / ${maxStamina}`;
 
                 // Aplicar multiplicador de Bunny Hop
                 currentSpeed *= bHopSpeedMultiplier;
