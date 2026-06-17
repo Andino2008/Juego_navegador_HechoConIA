@@ -274,6 +274,11 @@
 
     <div id="dialogue-box"></div>
 
+    <div id="chat-container" style="position: absolute; bottom: 150px; left: 20px; z-index: 100; pointer-events: none;">
+        <div id="chat-log" style="width: 350px; max-height: 120px; overflow-y: auto; color: #00ff00; font-family: 'Courier New', monospace; font-size: 14px; text-shadow: 1px 1px 0px #000; margin-bottom: 5px; pointer-events: auto;"></div>
+        <input type="text" id="chat-input" style="width: 340px; background: rgba(0,0,0,0.8); border: 2px solid #555; color: #fff; font-family: 'Courier New', monospace; font-size: 14px; padding: 4px; display: none; pointer-events: auto;" placeholder="Escribe algo..." maxlength="50">
+    </div>
+
     <div id="ui-container">
         <span id="hp-text">HP: 100 / 100</span>
         <div id="health-bar">
@@ -301,6 +306,13 @@
         let camera, scene, renderer, controls, minimapCamera, flashlight;
         let crystals = [];
         let npcs = [];
+        // Cofres abiertos y tabla de loot
+        const openedChests = new Set();
+        const chestLootTable = [
+            { name: "Poción de Vida", color: 0xff4444 },
+            { name: "Espada de Runas", color: 0x9999ff },
+            { name: "Escudo Viejo", color: 0x888888 }
+        ];
         
         let health = 100;
         let playerXP = 0;
@@ -309,6 +321,7 @@
         let maxStamina = 200;
         let stamina = maxStamina;
         let isDead = false;
+        let isGodMode = false;
         let isFlashlightOn = true;
         let flashlightIntensity = 90; // Puedes cambiar este número para ajustar el brillo a gusto
         const healthFill = document.getElementById('health-fill');
@@ -344,6 +357,10 @@
 
         // --- Variables de Inventario ---
         let isInventoryOpen = false;
+        let isChatOpen = false;
+        let chatInput = null;
+        let chatLog = null;
+        let chatFadeTimer = null;
         let inventorySlots = new Array(36).fill(null);
         inventorySlots[0] = { name: "Espada de Hierro", color: 0x999999 };
         let worldItems = [];
@@ -353,7 +370,7 @@
         let activeEnemies = [];
         let hasDealtDamage = false; // Evita multi-hits en un solo swing
 
-        let openedChests = new Set(); // Registro de coordenadas de altares looteados
+        
 
         let currentLevelGroup = null; // Contenedor global del nivel
 
@@ -523,6 +540,55 @@
                 if (elLevel) elLevel.innerText = String(level);
                 if (elXP) elXP.innerText = String(xp);
                 if (elDmg) elDmg.innerText = String(weaponDamage);
+            }
+
+            // --- Interacción con Altares / Cofres ---
+            function tryOpenNearbyChest(playerPos) {
+                for (let row = 0; row < mapGrid.length; row++) {
+                    for (let col = 0; col < mapGrid[row].length; col++) {
+                        if (mapGrid[row][col] !== 3) continue;
+
+                        const key = `${row},${col}`;
+                        if (openedChests.has(key)) continue;
+
+                        const px = (col - offset) * cellSize;
+                        const pz = (row - offset) * cellSize;
+                        const chestPos = new THREE.Vector3(px, 0, pz);
+
+                        const dist = Math.hypot(playerPos.x - px, playerPos.z - pz);
+                        if (dist <= 3.0) {
+                            const loot = chestLootTable[Math.floor(Math.random() * chestLootTable.length)];
+                            const freeIdx = inventorySlots.indexOf(null);
+                            if (freeIdx !== -1) {
+                                inventorySlots[freeIdx] = { name: loot.name, color: loot.color };
+                                updateInventoryUI();
+                                console.log(`[Cofre] Abierto en ${row},${col} -> ${loot.name} añadido al slot ${freeIdx}`);
+                            } else {
+                                console.log('[Cofre] Inventario lleno. No se pudo recoger el loot.');
+                            }
+
+                            // Marcar como abierto y limpiar lógicamente el mapa
+                            openedChests.add(key);
+                            mapGrid[row][col] = 0;
+
+                            // (Opcional) remover la malla visual del altar si existe en currentLevelGroup
+                            if (currentLevelGroup) {
+                                const toRemove = [];
+                                currentLevelGroup.children.forEach(child => {
+                                    if (child.position) {
+                                        const dx = Math.abs(child.position.x - px);
+                                        const dz = Math.abs(child.position.z - pz);
+                                        if (dx < 0.1 && dz < 0.1) toRemove.push(child);
+                                    }
+                                });
+                                toRemove.forEach(ch => currentLevelGroup.remove(ch));
+                            }
+
+                            return true;
+                        }
+                    }
+                }
+                return false;
             }
 
             // --- SISTEMA DE ARMAS (Clases) ---
@@ -805,9 +871,13 @@
             });
 
             controls.addEventListener('unlock', () => {
-                if (!isDead && !isInventoryOpen) {
-                    blocker.style.display = 'flex';
-                    instructions.style.display = '';
+                if (isChatOpen) {
+                    // Si se desbloqueó por el chat, ocultamos el blocker del menú de pausa
+                    document.getElementById('instructions').style.display = 'none';
+                    document.getElementById('blocker').style.display = 'none';
+                } else if (!isDead && !isInventoryOpen) {
+                    document.getElementById('blocker').style.display = 'flex';
+                    document.getElementById('instructions').style.display = '';
                 }
                 // Limpiar inputs al pausar
                 moveForward = moveBackward = moveLeft = moveRight = moveRun = false;
@@ -831,7 +901,127 @@
 
             scene.add(controls.getObject());
 
+            chatInput = document.getElementById('chat-input');
+            chatLog = document.getElementById('chat-log');
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.code === 'Enter') {
+                    event.preventDefault(); // Evitar comportamientos por defecto del input
+                    const msg = chatInput.value.trim();
+                    if (msg !== '') {
+                        const chatLog = document.getElementById('chat-log');
+                        const hudOverlay = document.getElementById('chat-hud-overlay');
+                        let hudText = "";
+                        
+                        // Sistema de Comandos de Desarrollador
+                        if (msg.startsWith('/')) {
+                            const args = msg.slice(1).split(' ');
+                            const command = args[0].toLowerCase();
+                            let consoleFeedback = '';
+
+                            switch (command) {
+                                case 'god':
+                                    isGodMode = !isGodMode;
+                                    consoleFeedback = `Modo Dios: ${isGodMode ? 'ACTIVADO' : 'DESACTIVADO'}`;
+                                    break;
+                                case 'heal':
+                                    health = 100;
+                                    healthFill.style.width = health + '%';
+                                    hpText.innerText = `HP: 100 / 100`;
+                                    consoleFeedback = 'Vida restaurada';
+                                    break;
+                                case 'stamina':
+                                    stamina = maxStamina;
+                                    staminaFill.style.width = '100%';
+                                    spText.innerText = `SP: ${maxStamina} / ${maxStamina}`;
+                                    consoleFeedback = 'Energía restaurada';
+                                    break;
+                                case 'tp':
+                                    if (args.length >= 3) {
+                                        const r = parseInt(args[1]);
+                                        const c = parseInt(args[2]);
+                                        if (!isNaN(r) && !isNaN(c)) {
+                                            const px = (c - offset) * cellSize;
+                                            const pz = (r - offset) * cellSize;
+                                            controls.getObject().position.set(px, 1.6, pz);
+                                            physicsPosition.set(px, 1.6, pz);
+                                            consoleFeedback = `Teletransportado a la grilla ${r}, ${c}`;
+                                        } else {
+                                            consoleFeedback = 'Error: coordenadas inválidas.';
+                                        }
+                                    } else {
+                                        consoleFeedback = 'Uso: /tp [row] [col] (números)';
+                                    }
+                                    break;
+                                case 'give':
+                                    if (args.length >= 2) {
+                                        const itemName = args.slice(1).join(' '); // Reconstruir nombre con espacios
+                                        const freeIdx = inventorySlots.indexOf(null);
+                                        if (freeIdx !== -1) {
+                                            // Si existe en la tabla de loot toma el color real, sino, blanco por defecto
+                                            let itemColor = 0xffffff;
+                                            const foundLoot = chestLootTable.find(l => l.name.toLowerCase() === itemName.toLowerCase());
+                                            if (foundLoot) itemColor = foundLoot.color;
+                                            
+                                            inventorySlots[freeIdx] = { name: itemName, color: itemColor };
+                                            updateInventoryUI();
+                                            consoleFeedback = `Recibiste: ${itemName}`;
+                                        } else {
+                                            consoleFeedback = 'Inventario lleno.';
+                                        }
+                                    } else {
+                                        consoleFeedback = 'Uso: /give [nombre del ítem]';
+                                    }
+                                    break;
+                                default:
+                                    consoleFeedback = 'Comando desconocido';
+                                    break;
+                            }
+                            // Printeo desaturado amarillo y silencioso (sin el "Jugador:")
+                            chatLog.innerHTML += `<div class="chat-msg" style="color: #e0e0a0;">[Consola] ${consoleFeedback}</div>`;
+                            hudText = `[Consola] ${consoleFeedback}`;
+                        } else {
+                            // Mensaje de chat tradicional
+                            chatLog.innerHTML += `<div class="chat-msg">Jugador: ${msg}</div>`;
+                            hudText = `Jugador: ${msg}`;
+                        }
+
+                        chatLog.scrollTop = chatLog.scrollHeight; // Auto-scroll
+                        
+                        // Activar HUD overlay flotante
+                        hudOverlay.innerText = hudText;
+                        hudOverlay.style.opacity = '1';
+                        
+                        if (chatFadeTimer) clearTimeout(chatFadeTimer);
+                        chatFadeTimer = setTimeout(() => {
+                            hudOverlay.style.opacity = '0';
+                        }, 4000);
+                    }
+                    chatInput.value = '';
+                    document.getElementById('chat-container').style.display = 'none';
+                    chatInput.blur();
+                    setTimeout(() => {
+                        isChatOpen = false;
+                        if (!isDead) controls.lock();
+                    }, 30);
+                }
+                event.stopPropagation(); // Evitar que el keydown del input lo tome el window general
+            });
+
             const onKeyDown = (event) => {
+                if (isChatOpen) return; // Si el chat está abierto, ignorar controles de personaje
+
+                if (event.code === 'Enter' && !isDead) {
+                    event.preventDefault();
+                    if (!isChatOpen) {
+                        isChatOpen = true;
+                        controls.unlock();
+                        document.getElementById('chat-container').style.display = 'flex';
+                        const inputEl = document.getElementById('chat-input');
+                        setTimeout(() => inputEl.focus(), 20);
+                    }
+                    return;
+                }
+
                 if (event.code === 'Tab') {
                     event.preventDefault();
                     document.getElementById('minimap-container').classList.add('expanded');
@@ -870,54 +1060,19 @@
                     case 'KeyS': moveBackward = true; break;
                     case 'KeyD': moveRight = true; break;
                     case 'KeyR':
-                    case 'KeyF':
-                        if (event.code === 'KeyF') {
-                            isFlashlightOn = !isFlashlightOn;
-                            flashlight.visible = isFlashlightOn;
-                        }
-                        
-                        // Lógica de Interacción con Altares (Cofres)
+                        // Interact key: intentar abrir cofre cercano
                         if (controls.isLocked && !isDead) {
-                            const pos = controls.getObject().position;
-                            const pCol = Math.round(pos.x / cellSize) + offset;
-                            const pRow = Math.round(pos.z / cellSize) + offset;
-                            
-                            // Revisar las celdas adyacentes (3x3 alrededor del jugador)
-                            for (let r = pRow - 1; r <= pRow + 1; r++) {
-                                for (let c = pCol - 1; c <= pCol + 1; c++) {
-                                    if (r >= 0 && r < mapGrid.length && c >= 0 && c < mapGrid[0].length) {
-                                        if (mapGrid[r][c] === 3) { // Bloque Tipo 3 (Altar)
-                                            const chestId = `${r},${c}`;
-                                            if (!openedChests.has(chestId)) {
-                                                const px = (c - offset) * cellSize;
-                                                const pz = (r - offset) * cellSize;
-                                                const dist = Math.hypot(pos.x - px, pos.z - pz);
-                                                
-                                                if (dist < 3.5) {
-                                                    const lootTable = [
-                                                        { name: "Poción de Vida", color: 0xff0000 },
-                                                        { name: "Espada de Runas", color: 0x00ffff },
-                                                        { name: "Escudo Viejo", color: 0x8b4513 }
-                                                    ];
-                                                    const loot = lootTable[Math.floor(Math.random() * lootTable.length)];
-                                                    
-                                                    let emptyIndex = inventorySlots.indexOf(null);
-                                                    if (emptyIndex !== -1) {
-                                                        inventorySlots[emptyIndex] = loot;
-                                                        updateInventoryUI();
-                                                        openedChests.add(chestId);
-                                                        console.log(`[Interacción] Abriste un altar y obtuviste: ${loot.name}`);
-                                                    } else {
-                                                        console.log(`[Interacción] Tu inventario está lleno, haz espacio primero.`);
-                                                    }
-                                                    return; // Finalizar tras primera interacción exitosa
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            tryOpenNearbyChest(controls.getObject().position);
                         }
+                        break;
+                    case 'KeyF':
+                        // Priorizar interacción: si no hay cofre cercano, alternar linterna
+                        if (controls.isLocked && !isDead) {
+                            const opened = tryOpenNearbyChest(controls.getObject().position);
+                            if (opened) break;
+                        }
+                        isFlashlightOn = !isFlashlightOn;
+                        flashlight.visible = isFlashlightOn;
                         break;
                     case 'ShiftLeft': moveRun = true; break;
                     case 'Space':
@@ -975,6 +1130,8 @@
             };
 
             const onKeyUp = (event) => {
+                if (isChatOpen) return; // Bloquear inputs si está escribiendo
+
                 if (event.code === 'Tab') {
                     event.preventDefault();
                     document.getElementById('minimap-container').classList.remove('expanded');
@@ -1193,7 +1350,7 @@
         }
 
         function takeDamage(amount) {
-            if (isDead) return;
+            if (isDead || isGodMode) return;
             health = Math.max(0, health - amount);
             healthFill.style.width = health + '%';
             hpText.innerText = `HP: ${Math.ceil(health)} / 100`;
