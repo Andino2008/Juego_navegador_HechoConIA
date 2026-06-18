@@ -209,3 +209,22 @@ export function takeDamage(amount) {
         if (blocker) blocker.style.display = 'none';
     }
 }
+
+export function respawnPlayer() {
+    state.isDead = false;
+    state.health = 100;
+    state.velocity.set(0, 0, 0);
+    if (state.controls) {
+        state.controls.getObject().position.set(0, 1.6, 0);
+        state.controls.lock();
+    }
+    state.physicsPosition.set(0, 1.6, 0);
+    
+    const deathScreen = document.getElementById('death-screen');
+    if (deathScreen) deathScreen.style.display = 'none';
+    
+    const hpFill = document.getElementById('health-fill');
+    const hpText = document.getElementById('hp-text');
+    if (hpFill) hpFill.style.width = '100%';
+    if (hpText) hpText.innerText = `HP: 100 / 100`;
+}

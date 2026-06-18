@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { state, updateInventoryUI, updateStatsUI, chestLootTable, cellSize } from './state.js';
+import { state, updateInventoryUI, updateStatsUI, chestLootTable, cellSize, respawnPlayer } from './state.js';
 import { tryOpenNearbyChest } from './level.js';
 
 export function setupInputs(camera) {
@@ -72,8 +72,20 @@ export function setupInputs(camera) {
     });
 
     document.addEventListener('keydown', (e) => {
+        // 1. Si el chat está abierto, no hacer nada
         if (state.isChatOpen) return;
-        if (e.code === 'Enter' && !state.isDead) {
+
+        // 2. Control del Respawn si el jugador ESTÁ muerto
+        if (state.isDead) {
+            if (e.code === 'KeyR') {
+                e.preventDefault();
+                respawnPlayer(); // Llamamos a la función de state.js
+            }
+            return; // Bloquea cualquier otra acción estando muerto
+        }
+
+        // 3. Abrir chat si se presiona Enter (solo vivos)
+        if (e.code === 'Enter') {
             e.preventDefault();
             state.isChatOpen = true; if (state.controls) state.controls.unlock();
             const chatCont = document.getElementById('chat-container');
@@ -124,7 +136,7 @@ export function setupInputs(camera) {
         }
     });
 
-    document.addEventListener('keyup', (e) => {
+document.addEventListener('keyup', (e) => {
         if (state.isChatOpen) return;
         if (e.code === 'Tab') { 
             e.preventDefault(); 
@@ -140,4 +152,4 @@ export function setupInputs(camera) {
             case 'ShiftLeft': state.moveRun = false; break;
         }
     });
-}
+} // <--- Solo esta llave cierra la función setupInputs

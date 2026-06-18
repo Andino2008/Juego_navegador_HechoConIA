@@ -308,7 +308,7 @@
 
     <div id="death-screen">
         <div>HAS MUERTO</div>
-        <span style="font-size: 16px; margin-top: 10px; color: #ccc;">Recargá la página para reiniciar</span>
+        <span style="font-size: 16px; margin-top: 10px; color: #ccc;">Presioná [R] para reaparecer</span>
     </div>
 
     <div id="hud">
@@ -368,93 +368,109 @@
         }
 
         function init() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
-            scene.fog = new THREE.FogExp2(0x000000, 0.08);
-            
+            try {
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x000000);
+                scene.fog = new THREE.FogExp2(0x000000, 0.08);
+                
 
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.y = 1.6;
+                camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+                camera.position.y = 1.6;
 
-            minimapCamera = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 100);
-            minimapCamera.position.y = 50; minimapCamera.lookAt(0, 0, 0);
+                minimapCamera = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 100);
+                minimapCamera.position.y = 50; minimapCamera.lookAt(0, 0, 0);
 
-            const playerHandsGroup = new THREE.Group();
-            const skinMat = new THREE.MeshLambertMaterial({ color: 0x8c7a6b, depthTest: false, depthWrite: false });
-            const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x4a4a4a, depthTest: false, depthWrite: false });
-            
-            state.leftArmGroup = new THREE.Group(); state.leftArmGroup.position.set(-0.4, -0.5, -0.8);
-            const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6, 6), sleeveMat); lArm.rotation.x = Math.PI / 2; lArm.renderOrder = 999;
-            const lFist = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), skinMat); lFist.position.z = -0.3; lFist.renderOrder = 999;
-            state.leftArmGroup.add(lArm, lFist);
-            
-            state.rightArmGroup = state.leftArmGroup.clone(); state.rightArmGroup.position.set(0.4, -0.5, -0.8);
-            state.rFist = state.rightArmGroup.children[1];
-            
-            state.swordGroup = new THREE.Group();
-            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.1), new THREE.MeshLambertMaterial({ color: 0x999999, depthTest: false, depthWrite: false })); blade.position.set(0, 0.49, 0); blade.renderOrder = 999;
-            state.swordGroup.add(blade); state.swordGroup.position.set(0, 0.1, -0.3); state.swordGroup.rotation.set(-0.2, 0, 0.1);
-            state.rightArmGroup.add(state.swordGroup);
+                const playerHandsGroup = new THREE.Group();
+                const skinMat = new THREE.MeshLambertMaterial({ color: 0x8c7a6b, depthTest: false, depthWrite: false });
+                const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x4a4a4a, depthTest: false, depthWrite: false });
+                
+                state.leftArmGroup = new THREE.Group(); state.leftArmGroup.position.set(-0.4, -0.5, -0.8);
+                const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6, 6), sleeveMat); lArm.rotation.x = Math.PI / 2; lArm.renderOrder = 999;
+                const lFist = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), skinMat); lFist.position.z = -0.3; lFist.renderOrder = 999;
+                state.leftArmGroup.add(lArm, lFist);
+                
+                state.rightArmGroup = state.leftArmGroup.clone(); state.rightArmGroup.position.set(0.4, -0.5, -0.8);
+                state.rFist = state.rightArmGroup.children[1];
+                
+                state.swordGroup = new THREE.Group();
+                const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.1), new THREE.MeshLambertMaterial({ color: 0x999999, depthTest: false, depthWrite: false })); blade.position.set(0, 0.49, 0); blade.renderOrder = 999;
+                state.swordGroup.add(blade); state.swordGroup.position.set(0, 0.1, -0.3); state.swordGroup.rotation.set(-0.2, 0, 0.1);
+                state.rightArmGroup.add(state.swordGroup);
 
-            state.flashlight = new THREE.SpotLight(0xfff3d1, 90, 60, Math.PI / 6, 0.8, 1);
-            state.flashlight.position.set(0.08, 0.08, -0.25);
-            state.leftArmGroup.add(state.flashlight, state.flashlight.target); state.flashlight.target.position.set(0.08, 0.08, -2);
-            
-            playerHandsGroup.add(state.leftArmGroup, state.rightArmGroup);
-            camera.add(playerHandsGroup); scene.add(camera);
+                state.flashlight = new THREE.SpotLight(0xfff3d1, 90, 60, Math.PI / 6, 0.8, 1);
+                state.flashlight.position.set(0.08, 0.08, -0.25);
+                state.leftArmGroup.add(state.flashlight, state.flashlight.target); state.flashlight.target.position.set(0.08, 0.08, -2);
+                
+                playerHandsGroup.add(state.leftArmGroup, state.rightArmGroup);
+                camera.add(playerHandsGroup); scene.add(camera);
 
-            state.controls = new PointerLockControls(camera, document.body);
-            scene.add(state.controls.getObject());
+                state.controls = new PointerLockControls(camera, document.body);
+                scene.add(state.controls.getObject());
 
-            const blocker = document.getElementById('blocker');
-            const playBtn = document.getElementById('btn-play');
-            if (playBtn && blocker) {
-                playBtn.addEventListener('click', () => { if (!state.isDead && state.controls) state.controls.lock(); });
-                state.controls.addEventListener('lock', () => { blocker.style.display = 'none'; });
-                state.controls.addEventListener('unlock', () => {
-                    if (!state.isChatOpen && !state.isDead && !state.isInventoryOpen) { blocker.style.display = 'flex'; }
-                    state.moveForward = state.moveBackward = state.moveLeft = state.moveRight = state.moveRun = false;
-                });
-            }
-
-            setupInputs(camera);
-
-            // Cargar textura de cielo nocturno estrellado
-            const textureLoader = new THREE.TextureLoader();
-            const skyTexture = textureLoader.load('https://imgs.search.brave.com/Yn76n6BsfxJh-u-YL9jUv38mLYpAtaxSRrVE_mE5V9w/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9tZWRp/YS5pc3RvY2twaG90/by5jb20vaWQvMjIz/MTAyMTY0Ni9waG90/by8zNjAtZGVncmVl/LWhkcmktc2t5LXBh/bm9yYW1hLXVsdHJh/LWhpZ2gtcmVzb2x1/dGlvbjMwLTAwMHB4/LWZvci12ci1hbmQt/c2t5Ym94LXVzZS5q/cGc_cz02MTJ4NjEy/Jnc9MCZrPTIwJmM9/VDBpLXB4TzZDVHJr/QUQ2MktOb1k2Tm1P/WjJDeTFvc2lKM3k5/NmFObG9UZz0');
-            skyTexture.mapping = THREE.EquirectangularReflectionMapping;
-            
-            // Crear esfera gigante invertida como skybox
-            const skySphereGeometry = new THREE.SphereGeometry(90, 32, 32);
-            const skySphereMaterial = new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, fog: false });
-            const skySphere = new THREE.Mesh(skySphereGeometry, skySphereMaterial);
-            scene.add(skySphere);
-            state.skySphere = skySphere;
-
-            scene.add(new THREE.AmbientLight(0x404040, 2.0)); // Subimos la intensidad global
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.2); dirLight.position.set(-1, 2, 1).normalize(); scene.add(dirLight);
-            
-            const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x3a3024 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
-
-            generateLevel(scene);
-            updateInventoryUI();
-
-            renderer = new THREE.WebGLRenderer({ antialias: false });
-            renderer.setPixelRatio(window.devicePixelRatio); renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
-
-            renderer.domElement.addEventListener('click', () => {
-                if (state.controls && !state.isDead && !state.isInventoryOpen && !state.isChatOpen) {
-                    state.controls.lock();
+                const blocker = document.getElementById('blocker');
+                const playBtn = document.getElementById('btn-play');
+                if (playBtn && blocker) {
+                    playBtn.addEventListener('click', () => { 
+                        if (!state.isDead && state.controls) {
+                            state.controls.lock();
+                            // Fallback robusto por si el evento 'lock' no dispara (ej: navegadores restrictivos)
+                            setTimeout(() => { if(blocker) blocker.style.display = 'none'; }, 150);
+                        }
+                    });
+                    state.controls.addEventListener('lock', () => { blocker.style.display = 'none'; });
+                    state.controls.addEventListener('error', (e) => { 
+                        console.error("PointerLock error", e); 
+                        blocker.style.display = 'none'; // Permitir ver el juego igual
+                    });
+                    state.controls.addEventListener('unlock', () => {
+                        if (!state.isChatOpen && !state.isDead && !state.isInventoryOpen) { blocker.style.display = 'flex'; }
+                        state.moveForward = state.moveBackward = state.moveLeft = state.moveRight = state.moveRun = false;
+                    });
                 }
-            });
 
-            animate();
+                setupInputs(camera);
+
+                // Cargar textura de cielo nocturno estrellado
+                const textureLoader = new THREE.TextureLoader();
+                const skyTexture = textureLoader.load('https://imgs.search.brave.com/Yn76n6BsfxJh-u-YL9jUv38mLYpAtaxSRrVE_mE5V9w/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9tZWRp/YS5pc3RvY2twaG90/by5jb20vaWQvMjIz/MTAyMTY0Ni9waG90/by8zNjAtZGVncmVl/LWhkcmktc2t5LXBh/bm9yYW1hLXVsdHJh/LWhpZ2gtcmVzb2x1/dGlvbjMwLTAwMHB4/LWZvci12ci1hbmQt/c2t5Ym94LXVzZS5q/cGc_cz02MTJ4NjEy/Jnc9MCZrPTIwJmM9/VDBpLXB4TzZDVHJr/QUQ2MktOb1k2Tm1P/WjJDeTFvc2lKM3k5/NmFObG9UZz0');
+                skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+                
+                // Crear esfera gigante invertida como skybox
+                const skySphereGeometry = new THREE.SphereGeometry(90, 32, 32);
+                const skySphereMaterial = new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, fog: false });
+                const skySphere = new THREE.Mesh(skySphereGeometry, skySphereMaterial);
+                scene.add(skySphere);
+                state.skySphere = skySphere;
+
+                scene.add(new THREE.AmbientLight(0x404040, 2.0)); // Subimos la intensidad global
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.2); dirLight.position.set(-1, 2, 1).normalize(); scene.add(dirLight);
+                
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x3a3024 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+
+                generateLevel(scene);
+                updateInventoryUI();
+
+                renderer = new THREE.WebGLRenderer({ antialias: false });
+                renderer.setPixelRatio(window.devicePixelRatio); renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(renderer.domElement);
+
+                window.addEventListener('resize', () => {
+                    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                renderer.domElement.addEventListener('click', () => {
+                    if (state.controls && !state.isDead && !state.isInventoryOpen && !state.isChatOpen) {
+                        state.controls.lock();
+                    }
+                });
+
+                animate();
+            } catch (err) {
+                console.error("Error en init:", err);
+                const footer = document.getElementById('menu-footer');
+                if (footer) footer.innerHTML = `<span style="color:red">Error cargando juego: ${err.message}</span>`;
+            }
         }
 
         function animate() {
