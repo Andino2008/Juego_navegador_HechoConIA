@@ -29,21 +29,57 @@
             position: absolute;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.85);
+            background-color: #000000;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 999;
         }
-        #instructions {
-            color: #ff4444;
-            font-size: 24px;
+        #main-menu {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+        }
+        #menu-title {
+            color: #00ff00;
+            font-size: 80px;
+            font-style: italic;
+            text-shadow: 4px 4px 0px #333;
+            margin: 0 0 50px 0;
             text-align: center;
+        }
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .retro-btn {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #000;
+            color: #fff;
+            font-size: 24px;
+            padding: 15px 40px;
+            border: 4px outset #fff;
             cursor: pointer;
-            border: 2px dashed #ff4444;
-            padding: 20px 40px;
-            background: #111;
-            text-shadow: 2px 2px 0px #000;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .retro-btn:hover {
+            background-color: #fff;
+            color: #000;
+            border-style: inset;
+        }
+        #menu-footer {
+            position: absolute;
+            bottom: 20px;
+            font-size: 14px;
+            color: #888;
+            text-align: center;
         }
 
         /* Pantalla de Muerte */
@@ -260,7 +296,14 @@
     <div id="dialogue-box"></div>
 
     <div id="blocker">
-        <div id="instructions">[ CLIC PARA JUGAR ]</div>
+        <div id="main-menu">
+            <h1 id="menu-title">Escape</h1>
+            <div class="menu-buttons">
+                <button id="btn-play" class="retro-btn">Jugar</button>
+                <button id="btn-options" class="retro-btn">Opciones</button>
+            </div>
+            <footer id="menu-footer">Código by IA, Ideas por: Enzo Andino.</footer>
+        </div>
     </div>
 
     <div id="death-screen">
@@ -364,17 +407,29 @@
             scene.add(state.controls.getObject());
 
             const blocker = document.getElementById('blocker');
-            const instructions = document.getElementById('instructions');
-            if (instructions && blocker) {
-                instructions.addEventListener('click', () => { if (!state.isDead && state.controls) state.controls.lock(); });
-                state.controls.addEventListener('lock', () => { instructions.style.display = 'none'; blocker.style.display = 'none'; });
+            const playBtn = document.getElementById('btn-play');
+            if (playBtn && blocker) {
+                playBtn.addEventListener('click', () => { if (!state.isDead && state.controls) state.controls.lock(); });
+                state.controls.addEventListener('lock', () => { blocker.style.display = 'none'; });
                 state.controls.addEventListener('unlock', () => {
-                    if (!state.isChatOpen && !state.isDead && !state.isInventoryOpen) { blocker.style.display = 'flex'; instructions.style.display = ''; }
+                    if (!state.isChatOpen && !state.isDead && !state.isInventoryOpen) { blocker.style.display = 'flex'; }
                     state.moveForward = state.moveBackward = state.moveLeft = state.moveRight = state.moveRun = false;
                 });
             }
 
             setupInputs(camera);
+
+            // Cargar textura de cielo nocturno estrellado
+            const textureLoader = new THREE.TextureLoader();
+            const skyTexture = textureLoader.load('https://imgs.search.brave.com/Yn76n6BsfxJh-u-YL9jUv38mLYpAtaxSRrVE_mE5V9w/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9tZWRp/YS5pc3RvY2twaG90/by5jb20vaWQvMjIz/MTAyMTY0Ni9waG90/by8zNjAtZGVncmVl/LWhkcmktc2t5LXBh/bm9yYW1hLXVsdHJh/LWhpZ2gtcmVzb2x1/dGlvbjMwLTAwMHB4/LWZvci12ci1hbmQt/c2t5Ym94LXVzZS5q/cGc_cz02MTJ4NjEy/Jnc9MCZrPTIwJmM9/VDBpLXB4TzZDVHJr/QUQ2MktOb1k2Tm1P/WjJDeTFvc2lKM3k5/NmFObG9UZz0');
+            skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+            
+            // Crear esfera gigante invertida como skybox
+            const skySphereGeometry = new THREE.SphereGeometry(90, 32, 32);
+            const skySphereMaterial = new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, fog: false });
+            const skySphere = new THREE.Mesh(skySphereGeometry, skySphereMaterial);
+            scene.add(skySphere);
+            state.skySphere = skySphere;
 
             scene.add(new THREE.AmbientLight(0x404040, 2.0)); // Subimos la intensidad global
             const dirLight = new THREE.DirectionalLight(0xffffff, 0.2); dirLight.position.set(-1, 2, 1).normalize(); scene.add(dirLight);
@@ -517,6 +572,11 @@
                 if (state.crystals && state.crystals.some(c => state.physicsPosition.distanceTo(c.mesh.position) < 2.0)) takeDamage(25 * delta);
             } else if (state.controls && !state.controls.isLocked) {
                 camera.position.copy(state.physicsPosition);
+            }
+
+            // Actualizar posicion del cielo para que siga a la camara (efecto infinito)
+            if (state.skySphere) {
+                state.skySphere.position.copy(camera.position);
             }
 
             if (renderer) {
