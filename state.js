@@ -41,7 +41,22 @@ export const mapObjects = [
 
     // Entidades interactivas (Cofres estratégicos)
     { type: 'chest', x: -16, z: -15, width: 2.5, depth: 1.8, height: 2 }, // Cofre oculto norte
-    { type: 'chest', x: -16, z: 4, width: 2.5, depth: 1.8, height: 2 }    // Oculto en cuarto oeste
+    { type: 'chest', x: -16, z: 4, width: 2.5, depth: 1.8, height: 2 },    // Oculto en cuarto oeste
+
+    // --- NUEVA MAZMORRA SUBTERRÁNEA (Centrada en 100, 100) ---
+    { type: 'wall', x: 100, z: 90, width: 22, depth: 2, height: 8 },  // Norte
+    { type: 'wall', x: 100, z: 110, width: 22, depth: 2, height: 8 }, // Sur
+    { type: 'wall', x: 89, z: 100, width: 2, depth: 22, height: 8 },  // Oeste
+    { type: 'wall', x: 111, z: 100, width: 2, depth: 22, height: 8 },  // Este
+
+    // Portal de entrada (Nivel Inicial) -> Lleva al sótano
+    { type: 'portal', x: 6, z: -14, width: 2.5, depth: 2.5, height: 0.15, destX: 100, destZ: 102, label: "Sótano Oscuro" },
+
+    // Portal de salida (Sótano) -> Lleva al nivel inicial
+    { type: 'portal', x: 100, z: 100, width: 2.5, depth: 2.5, height: 0.15, destX: 6, destZ: -11, label: "Nivel Inicial" },
+
+    // Cofre dentro de la mazmorra
+    { type: 'chest', x: 95, z: 95, width: 2.5, depth: 1.8, height: 2 }
 ];
 
 // --- ESTADO GLOBAL MUTABLE ---
@@ -56,6 +71,13 @@ export const state = {
     isDead: false,
     isGodMode: false,
     isFlashlightOn: true,
+    isTeleporting: false,
+    lastDamageTime: 0,
+    bloodOpacity: 0,
+    hurtWobbleIntensity: 0,
+    hurtWobbleX: 0,
+    hurtWobbleY: 0,
+    hurtWobbleZoom: 0,
 
     // Movimiento e inputs
     moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, moveRun: false, canJump: false,
@@ -180,12 +202,7 @@ export function addXP(amount) {
         xpNeeded = state.playerLevel * 100;
         state.health = 100;
         
-        const hpFill = document.getElementById('health-fill');
-        const hpText = document.getElementById('hp-text');
         const diagBox = document.getElementById('dialogue-box');
-        
-        if (hpFill) hpFill.style.width = state.health + '%';
-        if (hpText) hpText.innerText = `HP: ${Math.ceil(state.health)} / 100`;
         if (diagBox) diagBox.innerText = `¡Subiste al nivel ${state.playerLevel}!`;
         state.levelUpMessageTimer = 3.0;
     }
@@ -194,11 +211,36 @@ export function addXP(amount) {
 export function takeDamage(amount) {
     if (state.isDead || state.isGodMode) return;
     state.health = Math.max(0, state.health - amount);
+    state.lastDamageTime = performance.now(); // Registrar tiempo del golpe
     
-    const hpFill = document.getElementById('health-fill');
-    const hpText = document.getElementById('hp-text');
-    if (hpFill) hpFill.style.width = state.health + '%';
-    if (hpText) hpText.innerText = `HP: ${Math.ceil(state.health)} / 100`;
+
+
+    // Gestionar imágenes de sangre
+    const img1 = document.getElementById('blood-img1');
+    const img2 = document.getElementById('blood-img2');
+    if (img1 && img2) {
+        if (state.health <= 40) {
+            // Mostrar ambas imágenes en estado crítico
+            img1.style.display = 'block';
+            img2.style.display = 'block';
+        } else {
+            // Elegir una imagen aleatoria si no se muestra ninguna todavía
+            if (img1.style.display !== 'block' && img2.style.display !== 'block') {
+                if (Math.random() < 0.5) {
+                    img1.style.display = 'block';
+                    img2.style.display = 'none';
+                } else {
+                    img1.style.display = 'none';
+                    img2.style.display = 'block';
+                }
+            }
+        }
+    }
+
+    // Activar tambaleo de pantalla (hurtWobble) en golpes fuertes (>= 15 dmg) o HP bajo (< 45)
+    if (amount >= 15 || state.health <= 45) {
+        state.hurtWobbleIntensity = Math.min(0.08, state.hurtWobbleIntensity + amount * 0.003);
+    }
 
     if (state.health <= 0) {
         state.isDead = true;
@@ -207,6 +249,15 @@ export function takeDamage(amount) {
         const blocker = document.getElementById('blocker');
         if (deathScreen) deathScreen.style.display = 'flex';
         if (blocker) blocker.style.display = 'none';
+
+    // Ocultar la sangre en la pantalla de muerte
+    const bloodOverlay = document.getElementById('blood-overlay');
+    if (bloodOverlay) bloodOverlay.style.opacity = '0';
+    state.bloodOpacity = 0;
+    state.hurtWobbleIntensity = 0;
+    state.hurtWobbleX = 0;
+    state.hurtWobbleY = 0;
+    state.hurtWobbleZoom = 0;
     }
 }
 
@@ -223,8 +274,18 @@ export function respawnPlayer() {
     const deathScreen = document.getElementById('death-screen');
     if (deathScreen) deathScreen.style.display = 'none';
     
-    const hpFill = document.getElementById('health-fill');
-    const hpText = document.getElementById('hp-text');
-    if (hpFill) hpFill.style.width = '100%';
-    if (hpText) hpText.innerText = `HP: 100 / 100`;
+
+
+    // Limpiar sangre en respawn
+    state.bloodOpacity = 0;
+    state.hurtWobbleIntensity = 0;
+    state.hurtWobbleX = 0;
+    state.hurtWobbleY = 0;
+    state.hurtWobbleZoom = 0;
+    const bloodOverlay = document.getElementById('blood-overlay');
+    if (bloodOverlay) bloodOverlay.style.opacity = '0';
+    const img1 = document.getElementById('blood-img1');
+    const img2 = document.getElementById('blood-img2');
+    if (img1) img1.style.display = 'none';
+    if (img2) img2.style.display = 'none';
 }

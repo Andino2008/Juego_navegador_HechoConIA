@@ -2,6 +2,65 @@ import * as THREE from 'three';
 import { state, cellSize, chestLootTable, updateInventoryUI } from './state.js';
 import { TrainingDummy, Zombie } from './enemies.js';
 
+export function tryUseNearbyPortal(camera) {
+    if (state.isTeleporting || !camera) return false;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+    for (let i = 0; i < state.mapObjects.length; i++) {
+        const obj = state.mapObjects[i];
+        if (obj.type !== 'portal' || !obj.mesh) continue;
+
+        const dist = Math.hypot(state.physicsPosition.x - obj.x, state.physicsPosition.z - obj.z);
+        // Distancia máxima de interacción de 4.0 unidades
+        if (dist <= 4.0) {
+            const intersects = raycaster.intersectObject(obj.mesh);
+            if (intersects.length > 0) {
+                state.isTeleporting = true;
+                
+                // Efecto visual de fundido a negro
+                const overlay = document.getElementById('fade-overlay');
+                if (overlay) {
+                    overlay.style.opacity = '1';
+                }
+
+                // Bloquear temporalmente el movimiento
+                state.moveForward = state.moveBackward = state.moveLeft = state.moveRight = state.moveRun = false;
+
+                // Esperar a que la pantalla esté en negro (500ms por transición CSS)
+                setTimeout(() => {
+                    // Teletransportar al jugador
+                    if (state.controls) {
+                        state.controls.getObject().position.set(obj.destX, 1.6, obj.destZ);
+                    }
+                    state.physicsPosition.set(obj.destX, 1.6, obj.destZ);
+                    state.velocity.set(0, 0, 0);
+
+                    // Diálogo en el HUD
+                    const diagBox = document.getElementById('dialogue-box');
+                    if (diagBox) {
+                        diagBox.innerText = `Has entrado a: ${obj.label}`;
+                        setTimeout(() => { diagBox.innerText = ''; }, 3000);
+                    }
+
+                    // Iniciar el desvanecimiento de vuelta a la luz
+                    setTimeout(() => {
+                        if (overlay) {
+                            overlay.style.opacity = '0';
+                        }
+                        state.isTeleporting = false;
+                    }, 100);
+
+                }, 500);
+
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 export function tryOpenNearbyChest() {
     for (let i = 0; i < state.mapObjects.length; i++) {
         const obj = state.mapObjects[i];
@@ -50,7 +109,7 @@ export function generateLevel(scene) {
     const crystalGeo = new THREE.OctahedronGeometry(0.6, 0);
     const crystalMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
-    // Plano del suelo para mejorar el contraste en el minimapa
+    // Plano del suelo para mejorar el contraste en el minimapa (Nivel Inicial)
     const floorGeo = new THREE.PlaneGeometry(50, 50);
     const floorMat = new THREE.MeshLambertMaterial({ color: 0x554433 });
     const levelFloor = new THREE.Mesh(floorGeo, floorMat);
@@ -58,7 +117,16 @@ export function generateLevel(scene) {
     levelFloor.position.y = 0.01; // Elevado ligeramente para evitar z-fighting con el suelo global
     state.currentLevelGroup.add(levelFloor);
 
+    // Suelo de la mazmorra (Centrado en 100, 100)
+    const dungeonFloorGeo = new THREE.PlaneGeometry(24, 24);
+    const dungeonFloor = new THREE.Mesh(dungeonFloorGeo, floorMat);
+    dungeonFloor.rotation.x = -Math.PI / 2;
+    dungeonFloor.position.set(100, 0.01, 100);
+    state.currentLevelGroup.add(dungeonFloor);
+
     state.mapObjects.forEach(obj => {
+        if (obj.mesh) obj.mesh = null; // Limpieza preventiva de referencias
+
         if (obj.type === 'wall') {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(obj.width, obj.height, obj.depth), matWall);
             mesh.position.set(obj.x, obj.height / 2, obj.z);
@@ -80,6 +148,12 @@ export function generateLevel(scene) {
                 if (obj.rotationY !== undefined) group.rotation.y = obj.rotationY;
                 state.currentLevelGroup.add(group);
             }
+        } else if (obj.type === 'portal') {
+            // Renderiza el portal como una trampilla de madera oscura
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(obj.width, obj.height, obj.depth), new THREE.MeshLambertMaterial({ color: 0x2e1d0c }));
+            mesh.position.set(obj.x, obj.height / 2, obj.z);
+            state.currentLevelGroup.add(mesh);
+            obj.mesh = mesh; // Guardar referencia para detección de mirada (Raycasting)
         }
     });
 
@@ -95,7 +169,8 @@ export function generateLevel(scene) {
     });
     
     [new TrainingDummy("Mu", new THREE.Vector3(0,1.2,-12)), new TrainingDummy("Mu2", new THREE.Vector3(6,1.2,-12)),
-     new Zombie("Z1", new THREE.Vector3(0,0,-30)), new Zombie("Z2", new THREE.Vector3(-20,0,-15)), new Zombie("Z3", new THREE.Vector3(20,0,-40))
+     new Zombie("Z1", new THREE.Vector3(0,0,-30)), new Zombie("Z2", new THREE.Vector3(-20,0,-15)), new Zombie("Z3", new THREE.Vector3(20,0,-40)),
+     new Zombie("Z_Dungeon", new THREE.Vector3(102, 0, 105))
     ].forEach(enemy => { state.currentLevelGroup.add(enemy.mesh); state.activeEnemies.push(enemy); });
     
     scene.add(state.currentLevelGroup);
