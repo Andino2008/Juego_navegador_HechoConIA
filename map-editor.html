@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Mapas 2D</title>
+    <link rel="stylesheet" href="map-editor.css">
+</head>
+<body>
+    <div id="app">
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <h2>Editor de Mapas</h2>
+            </div>
+            
+            <div class="tools-section">
+                <h3>Herramientas</h3>
+                <div class="tool-grid">
+                    <button class="tool-btn active" data-tool="wall" title="Muro">
+                        <div class="icon-wall"></div> Muro
+                    </button>
+                    <button class="tool-btn" data-tool="column" title="Columna">
+                        <div class="icon-column"></div> Columna
+                    </button>
+                    <button class="tool-btn" data-tool="chest" title="Cofre">
+                        <div class="icon-chest"></div> Cofre
+                    </button>
+                    <button class="tool-btn" data-tool="portal" title="Portal">
+                        <div class="icon-portal"></div> Portal
+                    </button>
+                    <button class="tool-btn danger" data-tool="erase" title="Borrar">
+                        <div class="icon-erase"></div> Borrar
+                    </button>
+                </div>
+            </div>
+
+            <div class="properties-section" id="properties-panel">
+                <h3>Propiedades <span id="prop-type"></span></h3>
+                <div id="prop-fields">
+                    <!-- Dynamic fields will be injected here -->
+                    <p class="hint">Selecciona una herramienta para ver sus propiedades.</p>
+                </div>
+            </div>
+
+            <div class="actions-section">
+                <button id="btn-export" class="action-btn primary">Exportar mapa.json</button>
+                <button id="btn-clear" class="action-btn secondary">Limpiar Todo</button>
+                <a href="index.html" class="action-btn play-btn" target="_blank">Probar Juego</a>
+            </div>
+        </aside>
+        
+        <main id="editor-main">
+            <div class="canvas-container">
+                <canvas id="mapCanvas"></canvas>
+            </div>
+            <div class="status-bar">
+                <span id="coord-display">X: 0, Z: 0</span>
+                <span>Zoom: <span id="zoom-display">100%</span></span>
+            </div>
+        </main>
+    </div>
+    
+    <script src="map-editor.js"></script>
+</body>
+</html>

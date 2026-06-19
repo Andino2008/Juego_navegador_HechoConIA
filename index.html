@@ -362,7 +362,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-        import { state, checkMapCollision, takeDamage, updateInventoryUI } from './state.js';
+        import { state, checkMapCollision, takeDamage, updateInventoryUI, loadMap } from './state.js';
         import { fistsWeapon, swordWeapon } from './weapons.js';
         import { generateLevel } from './level.js';
         import { setupInputs } from './input.js';
@@ -376,8 +376,9 @@
             init();
         }
 
-        function init() {
+        async function init() {
             try {
+                await loadMap();
                 scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x000000);
                 scene.fog = new THREE.FogExp2(0x000000, 0.08);

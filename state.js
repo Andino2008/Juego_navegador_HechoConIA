@@ -10,54 +10,26 @@ export const chestLootTable = [
     { name: "Escudo Viejo", color: 0x888888 }
 ];
 
-export const mapObjects = [
-    // Muros Perimetrales Exteriores (Delimitan el mapa de ~40x40 centrado en 0,0)
-    { type: 'wall', x: 0, z: -20, width: 40, depth: 2, height: 8 }, // Norte
-    { type: 'wall', x: 0, z: 20, width: 40, depth: 2, height: 8 },  // Sur
-    { type: 'wall', x: -20, z: 0, width: 2, depth: 40, height: 8 }, // Oeste
-    { type: 'wall', x: 20, z: 0, width: 2, depth: 40, height: 8 },  // Este
+export let mapObjects = [];
 
-    // Habitación Inicial (Esquinas y columnas decorativas)
-    { type: 'column', x: -6, z: -6, radius: 1.0, height: 8 },
-    { type: 'column', x: 6, z: -6, radius: 1.0, height: 8 },
-    { type: 'column', x: -6, z: 6, radius: 1.0, height: 8 },
-    { type: 'column', x: 6, z: 6, radius: 1.0, height: 8 },
-
-    // Pasillos y Paredes Divisorias (Ala Norte)
-    { type: 'wall', x: -10, z: -8, width: 12, depth: 1.5, height: 8 },
-    { type: 'wall', x: 10, z: -8, width: 12, depth: 1.5, height: 8 },
-    // Pasillo hacia el este
-    { type: 'wall', x: 4, z: -14, width: 1.5, depth: 10, height: 8 },
-
-    // Ala Este (Zona de Columnas Cruzadas)
-    { type: 'column', x: 12, z: -14, radius: 0.8, height: 8 },
-    { type: 'column', x: 16, z: -14, radius: 0.8, height: 8 },
-    { type: 'column', x: 12, z: -10, radius: 0.8, height: 8 },
-    { type: 'column', x: 16, z: -10, radius: 0.8, height: 8 },
-
-    // Ala Oeste (Cuarto Cerrado del Tesoro)
-    { type: 'wall', x: -12, z: 0, width: 1.5, depth: 14, height: 8 },
-    { type: 'wall', x: -16, z: 7, width: 8, depth: 1.5, height: 8 },
-
-    // Entidades interactivas (Cofres estratégicos)
-    { type: 'chest', x: -16, z: -15, width: 2.5, depth: 1.8, height: 2 }, // Cofre oculto norte
-    { type: 'chest', x: -16, z: 4, width: 2.5, depth: 1.8, height: 2 },    // Oculto en cuarto oeste
-
-    // --- NUEVA MAZMORRA SUBTERRÁNEA (Centrada en 100, 100) ---
-    { type: 'wall', x: 100, z: 90, width: 22, depth: 2, height: 8 },  // Norte
-    { type: 'wall', x: 100, z: 110, width: 22, depth: 2, height: 8 }, // Sur
-    { type: 'wall', x: 89, z: 100, width: 2, depth: 22, height: 8 },  // Oeste
-    { type: 'wall', x: 111, z: 100, width: 2, depth: 22, height: 8 },  // Este
-
-    // Portal de entrada (Nivel Inicial) -> Lleva al sótano
-    { type: 'portal', x: 6, z: -14, width: 2.5, depth: 2.5, height: 0.15, destX: 100, destZ: 102, label: "Sótano Oscuro" },
-
-    // Portal de salida (Sótano) -> Lleva al nivel inicial
-    { type: 'portal', x: 100, z: 100, width: 2.5, depth: 2.5, height: 0.15, destX: 6, destZ: -11, label: "Nivel Inicial" },
-
-    // Cofre dentro de la mazmorra
-    { type: 'chest', x: 95, z: 95, width: 2.5, depth: 1.8, height: 2 }
-];
+export async function loadMap() {
+    try {
+        // Añadimos cache: 'no-store' para que en desarrollo siempre baje la última versión del mapa sin cache
+        const response = await fetch('mapa.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Error al cargar mapa.json');
+        const data = await response.json();
+        
+        // Reemplazar el array conservando la referencia para evitar romper imports si existieran (aunque usamos `state.mapObjects` también)
+        mapObjects.length = 0; 
+        data.forEach(obj => mapObjects.push(obj));
+        
+        // Asegurar que el estado apunte al mismo array
+        state.mapObjects = mapObjects;
+        console.log('Mapa cargado exitosamente', mapObjects.length, 'objetos');
+    } catch (error) {
+        console.error('No se pudo cargar el mapa. Asegúrate de estar usando un servidor local (Live Server).', error);
+    }
+}
 
 // --- ESTADO GLOBAL MUTABLE ---
 export const state = {
