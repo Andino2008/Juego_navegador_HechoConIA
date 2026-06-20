@@ -76,7 +76,7 @@ export const state = {
     crystals: [], npcs: [], worldItems: [], activeEnemies: [], openedChests: new Set(), currentLevelGroup: null,
     
     // Debug
-    debugHitboxes: false, debugMeshes: [], playerDebugMesh: null
+    debugHitboxes: false, debugMeshes: [], playerDebugMesh: null, freeCam: false
 };
 
 // Item inicial

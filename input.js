@@ -11,8 +11,10 @@ export function setupInputs(camera) {
             const now = performance.now();
             state.comboStep = (now - state.lastClickTime < 500) ? (state.comboStep % 3) + 1 : 1;
             state.lastClickTime = now;
-            state.isAttacking = true;
-            state.attackTimer = 0;
+            if (state.weaponManager) {
+                const hasSword = state.inventorySlots[state.activeHotbarIndex] && state.inventorySlots[state.activeHotbarIndex].name === "Espada de Hierro";
+                state.weaponManager.attack(state.comboStep, hasSword);
+            }
             state.hasDealtDamage = false;
         }
     });
@@ -39,6 +41,11 @@ export function setupInputs(camera) {
                         state.debugHitboxes = !state.debugHitboxes;
                         fb = `Hitboxes Visuales: ${state.debugHitboxes ? 'ON' : 'OFF'}`;
                         window.dispatchEvent(new CustomEvent('toggleDebugHitboxes', { detail: state.debugHitboxes }));
+                    }
+                    else if (cmd === 'cam') {
+                        state.freeCam = !state.freeCam;
+                        fb = `Cámara Libre: ${state.freeCam ? 'ON' : 'OFF'}`;
+                        window.dispatchEvent(new CustomEvent('toggleFreeCam', { detail: state.freeCam }));
                     }
                     else if (cmd === 'stamina') { state.stamina = state.maxStamina; fb = 'SP max'; }
                     else if (cmd === 'tp' && args.length >= 3) {

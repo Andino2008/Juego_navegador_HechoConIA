@@ -371,6 +371,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { WeaponManager } from './WeaponManager.js';
         import { state, checkMapCollision, resolveMapCollisions, takeDamage, updateInventoryUI, loadMap, getFloorHeight } from './state.js';
         import { fistsWeapon, swordWeapon } from './weapons.js';
         import { generateLevel, showHitboxes, hideHitboxes } from './level.js';
@@ -387,6 +388,22 @@
             } else {
                 if(legend) legend.style.display = 'none';
                 hideHitboxes(scene);
+            }
+        });
+
+        window.addEventListener('toggleFreeCam', (e) => {
+            const isFree = e.detail;
+            if (isFree && state.playerHandsGroup) {
+                scene.add(state.playerHandsGroup);
+                state.playerHandsGroup.position.copy(state.physicsPosition);
+                // Bloquear la rotación Y para que el jugador se quede mirando hacia donde estaba
+                state.playerHandsGroup.rotation.set(0, camera.rotation.y, 0);
+            } else if (!isFree && state.playerHandsGroup) {
+                camera.add(state.playerHandsGroup);
+                state.playerHandsGroup.position.set(0, 0, 0);
+                state.playerHandsGroup.rotation.set(0, 0, 0);
+                camera.position.copy(state.physicsPosition);
+                state.velocity.set(0, 0, 0);
             }
         });
 
@@ -418,21 +435,17 @@
                 const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6, 6), sleeveMat); lArm.rotation.x = Math.PI / 2; lArm.renderOrder = 999;
                 const lFist = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), skinMat); lFist.position.z = -0.3; lFist.renderOrder = 999;
                 state.leftArmGroup.add(lArm, lFist);
-                
-                state.rightArmGroup = state.leftArmGroup.clone(); state.rightArmGroup.position.set(0.4, -0.5, -0.8);
-                state.rFist = state.rightArmGroup.children[1];
-                
-                state.swordGroup = new THREE.Group();
-                const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.1), new THREE.MeshLambertMaterial({ color: 0x999999, depthTest: false, depthWrite: false })); blade.position.set(0, 0.49, 0); blade.renderOrder = 999;
-                state.swordGroup.add(blade); state.swordGroup.position.set(0, 0.1, -0.3); state.swordGroup.rotation.set(-0.2, 0, 0.1);
-                state.rightArmGroup.add(state.swordGroup);
+
+                // Inicializar WeaponManager procedural (ahora gestiona el modelo GLB y ambos brazos)
+                state.weaponManager = new WeaponManager(state.leftArmGroup);
 
                 state.flashlight = new THREE.SpotLight(0xfff3d1, 90, 60, Math.PI / 6, 0.8, 1);
                 state.flashlight.position.set(0.08, 0.08, -0.25);
                 state.leftArmGroup.add(state.flashlight, state.flashlight.target); state.flashlight.target.position.set(0.08, 0.08, -2);
                 
-                playerHandsGroup.add(state.leftArmGroup, state.rightArmGroup);
+                playerHandsGroup.add(state.leftArmGroup, state.weaponManager.rightArmGroup);
                 camera.add(playerHandsGroup); scene.add(camera);
+                state.playerHandsGroup = playerHandsGroup;
 
                 state.controls = new PointerLockControls(camera, document.body);
                 scene.add(state.controls.getObject());
@@ -578,58 +591,53 @@
 
             if (state.controls && state.controls.isLocked === true && !state.isDead) {
                 
-                if (state.isAttacking) {
-                    state.attackTimer += delta;
+                let isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
+
+                // Animación Procedural del Arma (ahora incluye combos y cambios de arma)
+                if (state.weaponManager && !state.freeCam) {
+                    const hasSword = state.inventorySlots[state.activeHotbarIndex] && state.inventorySlots[state.activeHotbarIndex].name === "Espada de Hierro";
+                    state.weaponManager.update(delta, time, isMoving, hasSword);
+                }
+
+                // Detección de Daño
+                if (state.weaponManager && state.weaponManager.isAttacking) {
+                    const timer = state.weaponManager.attackTimer;
                     const hasSword = state.inventorySlots[state.activeHotbarIndex] && state.inventorySlots[state.activeHotbarIndex].name === "Espada de Hierro";
                     
-                    if (state.attackTimer >= 0.3) {
-                        state.isAttacking = false;
-                        state.leftArmGroup.position.z = -0.8; state.rightArmGroup.position.set(0.4, -0.5, -0.8); state.rightArmGroup.rotation.set(0, 0, 0);
-                        if (!hasSword) state.currentPunch = state.currentPunch === 'left' ? 'right' : 'left';
-                    } else {
-                        const progress = state.attackTimer / 0.3;
-                        const swing = Math.sin(progress * Math.PI);
-                        
-                        if (progress > 0.4 && progress < 0.6 && !state.hasDealtDamage) {
-                            state.hasDealtDamage = true;
-                            const currentWeapon = hasSword ? swordWeapon : fistsWeapon;
-                            const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                            const intersects = raycaster.intersectObjects(state.activeEnemies.filter(e => !e.isDead).map(e => e.mesh), true);
-                            if (intersects.length > 0 && intersects[0].distance <= currentWeapon.range) {
-                                const hitEnemy = state.activeEnemies.find(e => e.mesh === intersects[0].object || e.mesh === intersects[0].object.parent);
-                                if (hitEnemy) {
-                                    let dmg = state.comboStep === 2 ? currentWeapon.damageCombo2 : (state.comboStep === 3 ? currentWeapon.damageCombo3 : currentWeapon.damageCombo1);
-                                    hitEnemy.receiveDamage(dmg, state.physicsPosition);
-                                }
+                    // Hit registration during Impact phase
+                    if (timer > 0.08 && timer < 0.26 && !state.hasDealtDamage) {
+                        state.hasDealtDamage = true;
+                        const currentWeapon = hasSword ? swordWeapon : fistsWeapon;
+                        const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                        const intersects = raycaster.intersectObjects(state.activeEnemies.filter(e => !e.isDead).map(e => e.mesh), true);
+                        if (intersects.length > 0 && intersects[0].distance <= currentWeapon.range) {
+                            const hitEnemy = state.activeEnemies.find(e => e.mesh === intersects[0].object || e.mesh === intersects[0].object.parent);
+                            if (hitEnemy) {
+                                let dmg = state.comboStep === 2 ? currentWeapon.damageCombo2 : (state.comboStep === 3 ? currentWeapon.damageCombo3 : currentWeapon.damageCombo1);
+                                hitEnemy.receiveDamage(dmg, state.physicsPosition);
                             }
-                        }
-                        
-                        if (hasSword) {
-                            if (state.comboStep === 1) { state.rightArmGroup.rotation.x = swing*1.2; state.rightArmGroup.rotation.y = swing*0.5; state.rightArmGroup.rotation.z = swing*0.8; state.rightArmGroup.position.z = -0.8 - swing*0.4; }
-                            else if (state.comboStep === 2) { const swing2 = Math.sin(progress * Math.PI * 2); state.rightArmGroup.rotation.x = swing*1.2; state.rightArmGroup.rotation.y = -swing2*0.8; state.rightArmGroup.position.z = -0.8 - swing*0.4; }
-                            else { state.rightArmGroup.rotation.x = swing*1.5; state.rightArmGroup.position.z = -0.8 - swing*1.5; state.rightArmGroup.position.y = -0.5 + swing*0.3; state.rightArmGroup.position.x = 0.4 - swing*0.2; }
-                        } else {
-                            if (state.currentPunch === 'left') state.leftArmGroup.position.z = -0.8 - swing*0.7; else state.rightArmGroup.position.z = -0.8 - swing*0.7;
                         }
                     }
                 }
 
-                camera.position.copy(state.physicsPosition);
+                camera.position.copy(state.freeCam ? camera.position : state.physicsPosition);
                 state.velocity.x -= state.velocity.x * 12.0 * delta; state.velocity.z -= state.velocity.z * 12.0 * delta;
-                state.velocity.y -= (state.isWallSliding ? 4.9 : 9.8) * 5.5 * delta;
-                state.controls.getObject().position.y += (state.velocity.y * delta);
+                
+                if (!state.freeCam) {
+                    state.velocity.y -= (state.isWallSliding ? 4.9 : 9.8) * 5.5 * delta;
+                    state.controls.getObject().position.y += (state.velocity.y * delta);
 
-                const floorY = getFloorHeight(state.controls.getObject().position.x, state.controls.getObject().position.z);
-                const targetY = 1.6 + floorY;
+                    const floorY = getFloorHeight(state.controls.getObject().position.x, state.controls.getObject().position.z);
+                    const targetY = 1.6 + floorY;
 
-                if (state.controls.getObject().position.y <= targetY) {
-                    state.velocity.y = 0; state.controls.getObject().position.y = targetY; state.canJump = true; state.isWallSliding = false; state.groundTimer += delta;
-                    if (state.groundTimer > 0.15) state.bHopSpeedMultiplier = 1.0;
-                } else state.groundTimer = 0.0;
+                    if (state.controls.getObject().position.y <= targetY) {
+                        state.velocity.y = 0; state.controls.getObject().position.y = targetY; state.canJump = true; state.isWallSliding = false; state.groundTimer += delta;
+                        if (state.groundTimer > 0.15) state.bHopSpeedMultiplier = 1.0;
+                    } else state.groundTimer = 0.0;
+                }
 
                 state.direction.z = Number(state.moveForward) - Number(state.moveBackward); state.direction.x = Number(state.moveRight) - Number(state.moveLeft); state.direction.normalize();
                 
-                let isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
                 let currentSpeed = 40.0;
                 if (isMoving) {
                     if (state.moveRun && state.stamina > 0) { currentSpeed = 70.0; state.stamina -= 20 * delta; }
@@ -643,19 +651,30 @@
                 if (spText) spText.innerText = `SP: ${Math.ceil(state.stamina)} / ${state.maxStamina}`;
                 
                 currentSpeed *= state.bHopSpeedMultiplier;
-                if (state.moveForward || state.moveBackward) state.velocity.z -= state.direction.z * currentSpeed * delta;
-                if (state.moveLeft || state.moveRight) state.velocity.x -= state.direction.x * currentSpeed * delta;
-
                 const pos = state.controls.getObject().position;
-                state.controls.moveRight(-state.velocity.x * delta);
-                state.controls.moveForward(-state.velocity.z * delta);
-                
-                // Resolver superposición de hitboxes (Slide & Push)
-                const resolved = resolveMapCollisions(pos.x, pos.y, pos.z);
-                pos.x = resolved.x;
-                pos.z = resolved.z;
 
-                state.physicsPosition.copy(camera.position);
+                if (!state.freeCam) {
+                    if (state.moveForward || state.moveBackward) state.velocity.z -= state.direction.z * currentSpeed * delta;
+                    if (state.moveLeft || state.moveRight) state.velocity.x -= state.direction.x * currentSpeed * delta;
+                    
+                    state.controls.moveRight(-state.velocity.x * delta);
+                    state.controls.moveForward(-state.velocity.z * delta);
+                    
+                    // Resolver superposición de hitboxes (Slide & Push)
+                    const resolved = resolveMapCollisions(pos.x, pos.y, pos.z);
+                    pos.x = resolved.x;
+                    pos.z = resolved.z;
+
+                    state.physicsPosition.copy(camera.position);
+                } else {
+                    // Modo vuelo espectador (Noclip total)
+                    const dir = new THREE.Vector3();
+                    camera.getWorldDirection(dir);
+                    if (state.moveForward) pos.addScaledVector(dir, currentSpeed * delta);
+                    if (state.moveBackward) pos.addScaledVector(dir, -currentSpeed * delta);
+                    if (state.moveRight) state.controls.moveRight(currentSpeed * delta);
+                    if (state.moveLeft) state.controls.moveRight(-currentSpeed * delta);
+                }
 
                 if (isMoving && state.canJump) {
                     bobbingTimer += delta * (state.moveRun ? 2.0 : 1.0);
