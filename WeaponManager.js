@@ -13,6 +13,11 @@ export class WeaponManager {
         this.currentPunch = 'right';
         this.currentWeapon = 'fists';
         
+        // Dinámicos según el arma
+        this.weaponStats = null;
+        this.onHitCallback = null;
+        this.hasTriggeredHit = false;
+        
         this.baseRightPosition = new THREE.Vector3(0.4, -0.5, -0.8);
         this.baseRightRotation = new THREE.Euler(0, 0, 0);
         this.baseLeftPosition = new THREE.Vector3(-0.4, -0.5, -0.8);
@@ -62,12 +67,16 @@ export class WeaponManager {
         });
     }
     
-    attack(comboStep, hasSword) {
+    attack(comboStep, hasSword, weaponStats, onHitCallback) {
         if (this.isAttacking) return;
         this.isAttacking = true;
         this.attackTimer = 0;
         this.comboStep = comboStep;
         this.currentWeapon = hasSword ? 'sword' : 'fists';
+        this.weaponStats = weaponStats;
+        this.onHitCallback = onHitCallback;
+        this.hasTriggeredHit = false;
+        
         if (!hasSword) {
             this.currentPunch = this.currentPunch === 'left' ? 'right' : 'left';
         }
@@ -79,9 +88,19 @@ export class WeaponManager {
             this.swordMesh.visible = hasSword;
         }
 
-        if (this.isAttacking) {
+        if (this.isAttacking && this.weaponStats) {
             this.attackTimer += delta;
-            const tTotal = 0.3; // Duración total del ataque
+            
+            const tAnticipation = this.weaponStats.tAnticipation;
+            const tImpact = this.weaponStats.tImpact;
+            const tRecovery = this.weaponStats.tRecovery;
+            const tTotal = tAnticipation + tImpact + tRecovery;
+            
+            // Disparar el daño exactamente cuando termina la anticipación y empieza el impacto
+            if (this.attackTimer >= tAnticipation && !this.hasTriggeredHit) {
+                this.hasTriggeredHit = true;
+                if (this.onHitCallback) this.onHitCallback(this.weaponStats);
+            }
             
             if (this.attackTimer < tTotal) {
                 const progress = this.attackTimer / tTotal;

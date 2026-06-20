@@ -13,9 +13,10 @@ export function setupInputs(camera) {
             state.lastClickTime = now;
             if (state.weaponManager) {
                 const hasSword = state.inventorySlots[state.activeHotbarIndex] && state.inventorySlots[state.activeHotbarIndex].name === "Espada de Hierro";
-                state.weaponManager.attack(state.comboStep, hasSword);
+                // Asignamos las stats según el arma equipada
+                const weaponStats = hasSword ? state.swordWeaponRef : state.fistsWeaponRef; 
+                state.weaponManager.attack(state.comboStep, hasSword, weaponStats, state.performMeleeHit);
             }
-            state.hasDealtDamage = false;
         }
     });
 

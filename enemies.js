@@ -8,12 +8,22 @@ export class Enemy {
         this.flashTimer = 0; this.baseColor = 0xffffff;
         this.velocity = new THREE.Vector3();
         this.xpValue = 0;
+        
+        // FSM & Hitbox
+        this.aiState = 'idle';
+        this.stateTimer = 0;
+        this.hitboxMesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 1.5), new THREE.MeshBasicMaterial({visible: false}));
+        this.hitboxMesh.enemyRef = this;
     }
     
     receiveDamage(amount, sourcePos = null) {
         if (this.isDead) return;
         this.hp -= amount;
         this.flashTimer = 0.1;
+        
+        // STAGGER INTERRUPT
+        this.aiState = 'stagger';
+        this.stateTimer = 0.4; // 400ms stun
         
         if (this.mesh && sourcePos) {
             const knockDir = new THREE.Vector3().subVectors(this.mesh.position, sourcePos).setY(0);
@@ -33,8 +43,16 @@ export class Enemy {
     
     update(delta, time, playerPos) {
         if (this.isDead || !this.mesh) return;
-        const flashColor = this.flashTimer > 0 ? 0xff0000 : this.baseColor;
+        const flashColor = this.flashTimer > 0 ? 0xffffff : this.baseColor; // White flash instead of red for visibility
         if (this.flashTimer > 0) this.flashTimer -= delta;
+
+        if (this.aiState === 'stagger') {
+            this.stateTimer -= delta;
+            if (this.stateTimer <= 0) {
+                this.aiState = 'chase';
+                this.baseColor = this.originalBaseColor || this.baseColor; // Reset telegraph color
+            }
+        }
 
         if (this.mesh.isGroup) {
             this.mesh.children.forEach(child => { if (child.material) child.material.color.setHex(flashColor); });
@@ -58,6 +76,7 @@ export class TrainingDummy extends Enemy {
         super(id, position, 100);
         this.baseColor = 0x440000;
         this.mesh = new THREE.Mesh(new THREE.OctahedronGeometry(1.5, 0), new THREE.MeshLambertMaterial({ color: this.baseColor }));
+        this.mesh.add(this.hitboxMesh); // Attach hitbox
         this.mesh.position.copy(position);
         this.xpValue = 10;
         this.originY = position.y;
@@ -73,8 +92,9 @@ export class TrainingDummy extends Enemy {
 export class Zombie extends Enemy {
     constructor(id, position) {
         super(id, position, 150);
-        this.baseColor = 0x3e5c32; this.speed = 2.0; this.attackCooldown = 0.0; this.xpValue = 35;
+        this.baseColor = 0x3e5c32; this.originalBaseColor = 0x3e5c32; this.speed = 2.0; this.xpValue = 35;
         this.mesh = new THREE.Group();
+        this.mesh.add(this.hitboxMesh); // Attach hitbox
         const mat = new THREE.MeshLambertMaterial({ color: this.baseColor });
         
         const body = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.0, 8), mat); body.position.y = 1.0;
@@ -87,22 +107,49 @@ export class Zombie extends Enemy {
 
     update(delta, time, playerPos) {
         super.update(delta, time, playerPos); 
-        if (this.isDead) return;
+        if (this.isDead || this.aiState === 'stagger') return; // Stagger congela a la IA
+        
         const dist = this.mesh.position.distanceTo(playerPos);
         
-        if (dist < 15.0) {
+        if (this.aiState === 'idle') {
+            if (dist < 15.0) this.aiState = 'chase';
+        } 
+        else if (this.aiState === 'chase') {
             this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
-            if (this.attackCooldown > 0) this.attackCooldown = Math.max(0, this.attackCooldown - delta);
-
             if (dist > 1.8) {
                 const dir = new THREE.Vector3().subVectors(playerPos, this.mesh.position).normalize();
                 const newX = this.mesh.position.x + dir.x * this.speed * delta;
                 const newZ = this.mesh.position.z + dir.z * this.speed * delta;
                 if (!checkMapCollision(newX, this.mesh.position.z)) this.mesh.position.x = newX;
                 if (!checkMapCollision(this.mesh.position.x, newZ)) this.mesh.position.z = newZ;
-            } else if (this.attackCooldown <= 0) {
-                takeDamage(15);
-                this.attackCooldown = 1.5;
+            } else {
+                // Empezar a telegrafiar (0.6s de aviso)
+                this.aiState = 'telegraph';
+                this.stateTimer = 0.6; 
+                this.baseColor = 0x882222; // Se enoja visualmente
+            }
+        }
+        else if (this.aiState === 'telegraph') {
+            this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
+            this.stateTimer -= delta;
+            if (this.stateTimer <= 0) {
+                this.aiState = 'attack';
+                this.baseColor = this.originalBaseColor; 
+                
+                // Ataque real: si no esquivaste, te pega.
+                if (dist < 2.5) { 
+                    takeDamage(15);
+                }
+            }
+        }
+        else if (this.aiState === 'attack') {
+            this.stateTimer = 1.0; // Cooldown post-ataque
+            this.aiState = 'recovery';
+        }
+        else if (this.aiState === 'recovery') {
+            this.stateTimer -= delta;
+            if (this.stateTimer <= 0) {
+                this.aiState = 'chase';
             }
         }
     }

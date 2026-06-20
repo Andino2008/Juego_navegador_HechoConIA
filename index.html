@@ -380,6 +380,32 @@
         let camera, scene, renderer, minimapCamera;
         let bobbingTimer = 0, bobbingX = 0, bobbingY = 0;
 
+        // Callback global de Daño para WeaponManager
+        state.performMeleeHit = function(weaponStats) {
+            if (!state.activeEnemies) return;
+            
+            const playerPos = state.physicsPosition;
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
+            
+            state.activeEnemies.forEach(enemy => {
+                if (enemy.isDead) return;
+                const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, playerPos).setY(0);
+                const dist = toEnemy.length();
+                
+                if (dist <= weaponStats.range) {
+                    toEnemy.normalize();
+                    const dot = forward.dot(toEnemy);
+                    
+                    // Cálculo de cono indulgente: si el hitRadius es 1.0, solo necesitas ~90 grados de precisión
+                    const minDot = Math.max(-0.2, 0.8 - (weaponStats.hitRadius * 0.25)); 
+                    if (dot > minDot) {
+                        let dmg = state.comboStep === 2 ? weaponStats.damageCombo2 : (state.comboStep === 3 ? weaponStats.damageCombo3 : weaponStats.damageCombo1);
+                        enemy.receiveDamage(dmg, playerPos);
+                    }
+                }
+            });
+        };
+
         window.addEventListener('toggleDebugHitboxes', (e) => {
             const legend = document.getElementById('hitbox-legend');
             if (e.detail) {
@@ -471,6 +497,8 @@
                     });
                 }
 
+                state.swordWeaponRef = swordWeapon;
+                state.fistsWeaponRef = fistsWeapon;
                 setupInputs(camera);
 
                 // Cargar textura de cielo nocturno estrellado
@@ -597,27 +625,6 @@
                 if (state.weaponManager && !state.freeCam) {
                     const hasSword = state.inventorySlots[state.activeHotbarIndex] && state.inventorySlots[state.activeHotbarIndex].name === "Espada de Hierro";
                     state.weaponManager.update(delta, time, isMoving, hasSword);
-                }
-
-                // Detección de Daño
-                if (state.weaponManager && state.weaponManager.isAttacking) {
-                    const timer = state.weaponManager.attackTimer;
-                    const hasSword = state.inventorySlots[state.activeHotbarIndex] && state.inventorySlots[state.activeHotbarIndex].name === "Espada de Hierro";
-                    
-                    // Hit registration during Impact phase
-                    if (timer > 0.08 && timer < 0.26 && !state.hasDealtDamage) {
-                        state.hasDealtDamage = true;
-                        const currentWeapon = hasSword ? swordWeapon : fistsWeapon;
-                        const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                        const intersects = raycaster.intersectObjects(state.activeEnemies.filter(e => !e.isDead).map(e => e.mesh), true);
-                        if (intersects.length > 0 && intersects[0].distance <= currentWeapon.range) {
-                            const hitEnemy = state.activeEnemies.find(e => e.mesh === intersects[0].object || e.mesh === intersects[0].object.parent);
-                            if (hitEnemy) {
-                                let dmg = state.comboStep === 2 ? currentWeapon.damageCombo2 : (state.comboStep === 3 ? currentWeapon.damageCombo3 : currentWeapon.damageCombo1);
-                                hitEnemy.receiveDamage(dmg, state.physicsPosition);
-                            }
-                        }
-                    }
                 }
 
                 camera.position.copy(state.freeCam ? camera.position : state.physicsPosition);
