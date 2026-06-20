@@ -350,6 +350,15 @@
         <img id="blood-img2" src="imagenes/recibir damage/sangre_pantalla2.png" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: none;">
     </div>
 
+    <!-- Leyenda de Hitboxes (Oculta por defecto) -->
+    <div id="hitbox-legend" style="display: none; position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: white; padding: 12px; font-family: monospace; border-radius: 5px; z-index: 10000; font-size: 12px; border: 1px solid #444; pointer-events: none;">
+        <b style="color: #f1c40f;">MODO DEPURACIÓN DE HITBOXES</b><br><br>
+        <span style="color: #2ecc71;">■</span> Jugador (Radio)<br>
+        <span style="color: #9b59b6;">■</span> Bloques / Entorno (OBB)<br>
+        <span style="color: #3498db;">■</span> Columnas (Círculos)<br>
+        <span style="color: #e74c3c;">■</span> Triggers / Portales
+    </div>
+
     <script type="importmap">
         {
             "imports": {
@@ -362,13 +371,24 @@
     <script type="module">
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-        import { state, checkMapCollision, takeDamage, updateInventoryUI, loadMap } from './state.js';
+        import { state, checkMapCollision, resolveMapCollisions, takeDamage, updateInventoryUI, loadMap, getFloorHeight } from './state.js';
         import { fistsWeapon, swordWeapon } from './weapons.js';
-        import { generateLevel } from './level.js';
+        import { generateLevel, showHitboxes, hideHitboxes } from './level.js';
         import { setupInputs } from './input.js';
 
         let camera, scene, renderer, minimapCamera;
         let bobbingTimer = 0, bobbingX = 0, bobbingY = 0;
+
+        window.addEventListener('toggleDebugHitboxes', (e) => {
+            const legend = document.getElementById('hitbox-legend');
+            if (e.detail) {
+                if(legend) legend.style.display = 'block';
+                showHitboxes(scene);
+            } else {
+                if(legend) legend.style.display = 'none';
+                hideHitboxes(scene);
+            }
+        });
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => init());
@@ -599,8 +619,11 @@
                 state.velocity.y -= (state.isWallSliding ? 4.9 : 9.8) * 5.5 * delta;
                 state.controls.getObject().position.y += (state.velocity.y * delta);
 
-                if (state.controls.getObject().position.y <= 1.6) {
-                    state.velocity.y = 0; state.controls.getObject().position.y = 1.6; state.canJump = true; state.isWallSliding = false; state.groundTimer += delta;
+                const floorY = getFloorHeight(state.controls.getObject().position.x, state.controls.getObject().position.z);
+                const targetY = 1.6 + floorY;
+
+                if (state.controls.getObject().position.y <= targetY) {
+                    state.velocity.y = 0; state.controls.getObject().position.y = targetY; state.canJump = true; state.isWallSliding = false; state.groundTimer += delta;
                     if (state.groundTimer > 0.15) state.bHopSpeedMultiplier = 1.0;
                 } else state.groundTimer = 0.0;
 
@@ -624,13 +647,13 @@
                 if (state.moveLeft || state.moveRight) state.velocity.x -= state.direction.x * currentSpeed * delta;
 
                 const pos = state.controls.getObject().position;
-                const oldX = pos.x, oldZ = pos.z;
-                state.controls.moveRight(-state.velocity.x * delta); state.controls.moveForward(-state.velocity.z * delta);
-                const newX = pos.x, newZ = pos.z;
-                pos.set(oldX, pos.y, oldZ);
+                state.controls.moveRight(-state.velocity.x * delta);
+                state.controls.moveForward(-state.velocity.z * delta);
                 
-                if (!checkMapCollision(newX, pos.y, oldZ)) pos.x = newX;
-                if (!checkMapCollision(pos.x, pos.y, newZ)) pos.z = newZ;
+                // Resolver superposición de hitboxes (Slide & Push)
+                const resolved = resolveMapCollisions(pos.x, pos.y, pos.z);
+                pos.x = resolved.x;
+                pos.z = resolved.z;
 
                 state.physicsPosition.copy(camera.position);
 
@@ -643,6 +666,10 @@
                 // Aplicar movimiento del bobbing y el tambaleo de daño (wobbleX / wobbleY)
                 camera.translateX(bobbingX + state.hurtWobbleX);
                 camera.position.y += bobbingY + state.hurtWobbleY;
+
+                if (state.debugHitboxes && state.playerDebugMesh) {
+                    state.playerDebugMesh.position.set(state.physicsPosition.x, state.physicsPosition.y - 0.7, state.physicsPosition.z);
+                }
 
                 if (state.crystals && state.crystals.some(c => state.physicsPosition.distanceTo(c.mesh.position) < 2.0)) takeDamage(25 * delta);
             } else if (state.controls && !state.controls.isLocked) {

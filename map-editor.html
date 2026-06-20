@@ -55,11 +55,37 @@
                 </div>
             </div>
 
+            <div class="properties-section">
+                <h3>Organización de Escena</h3>
+                <div class="prop-group" style="display: flex; gap: 5px; margin-bottom: 10px;">
+                    <input type="text" id="new-group-name" placeholder="Nuevo Grupo..." style="flex-grow: 1; padding: 5px; background: #222; border: 1px solid #444; color: #fff;">
+                    <button id="btn-add-group" class="action-btn primary" style="padding: 5px 10px;">+</button>
+                </div>
+                <ul id="groups-list" style="list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto;">
+                    <!-- Los grupos se renderizarán aquí -->
+                </ul>
+            </div>
+
             <div class="properties-section" id="object-properties" style="display:none;">
                 <h3>Objeto Seleccionado</h3>
                 <p id="selected-type" style="color: var(--accent); font-weight: bold; margin-bottom: 10px;">-</p>
+                
+                <div class="prop-group">
+                    <label>Grupo</label>
+                    <select id="object-group-select" style="width: 100%; margin-bottom: 10px;">
+                        <!-- Opciones dinámicas -->
+                    </select>
+                </div>
+
+                <h4 style="margin-bottom: 5px;">Escala Local</h4>
+                <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                    <input type="number" id="scale-x" step="any" placeholder="X" style="width: 33%; background: #222; border: 1px solid #444; color: #fff; padding: 5px;" title="Scale X">
+                    <input type="number" id="scale-y" step="any" placeholder="Y" style="width: 33%; background: #222; border: 1px solid #444; color: #fff; padding: 5px;" title="Scale Y">
+                    <input type="number" id="scale-z" step="any" placeholder="Z" style="width: 33%; background: #222; border: 1px solid #444; color: #fff; padding: 5px;" title="Scale Z">
+                </div>
+
                 <div id="dynamic-properties"></div>
-                <button id="btn-delete" class="action-btn secondary" style="margin-top: 10px;">Borrar Objeto (Supr)</button>
+                <button id="btn-delete" class="action-btn secondary" style="margin-top: 10px; border-color: var(--danger);">Borrar Objeto (Supr)</button>
             </div>
 
             <div class="actions-section">
@@ -72,7 +98,19 @@
         </aside>
         
         <!-- Viewport 3D -->
-        <main id="editor-viewport">
+        <main id="editor-viewport" style="position: relative;">
+            <!-- HUD -->
+            <div id="editor-hud" style="position: absolute; top: 15px; left: 15px; pointer-events: none; background: rgba(0,0,0,0.7); color: #ddd; padding: 10px 15px; border-radius: 6px; font-family: monospace; font-size: 13px; z-index: 100; line-height: 1.5; border: 1px solid #444;">
+                <div style="font-weight: bold; color: #fff; margin-bottom: 5px; border-bottom: 1px solid #666; padding-bottom: 5px;">ATAJOS RAPIDOS</div>
+                <div><b>T / R / E</b> - Mover / Rotar / Escalar</div>
+                <div><b>Supr</b> - Borrar Objeto</div>
+                <div><b>Shift + Arrastre</b> - Clonar en Movimiento</div>
+                <div><b>Ctrl + D</b> - Clonar en Sitio</div>
+                <div style="margin-top: 8px; padding-top: 5px; border-top: 1px dashed #555;">
+                    <b>Cámara:</b> <span id="camera-mode-text" style="color: #55efc4; font-weight: bold;">[Construcción]</span><br>
+                    <span style="font-size: 11px; color: #aaa;">(Presiona ESPACIO para alternar)</span>
+                </div>
+            </div>
             <!-- Three.js Canvas será inyectado aquí -->
         </main>
     </div>

@@ -35,6 +35,11 @@ export function setupInputs(camera) {
                         state.health = 100;
                         fb = 'Curado';
                     }
+                    else if (cmd === 'h') {
+                        state.debugHitboxes = !state.debugHitboxes;
+                        fb = `Hitboxes Visuales: ${state.debugHitboxes ? 'ON' : 'OFF'}`;
+                        window.dispatchEvent(new CustomEvent('toggleDebugHitboxes', { detail: state.debugHitboxes }));
+                    }
                     else if (cmd === 'stamina') { state.stamina = state.maxStamina; fb = 'SP max'; }
                     else if (cmd === 'tp' && args.length >= 3) {
                         const px = parseFloat(args[1]);

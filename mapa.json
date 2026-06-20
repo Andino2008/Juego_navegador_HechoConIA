@@ -1,1 +1,53 @@
-[]
+{
+  "metadata": {
+    "groups": {
+      "Default": {
+        "visible": true
+      }
+    }
+  },
+  "objects": [
+    {
+      "id": 1,
+      "type": "wall",
+      "group": "Default",
+      "pos": [
+        6,
+        4,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        30,
+        8,
+        2
+      ],
+      "properties": {}
+    },
+    {
+      "id": 3,
+      "type": "wall",
+      "group": "Default",
+      "pos": [
+        -20,
+        4,
+        -18
+      ],
+      "rot": [
+        0,
+        -60,
+        0
+      ],
+      "scale": [
+        42,
+        8,
+        2
+      ],
+      "properties": {}
+    }
+  ]
+}

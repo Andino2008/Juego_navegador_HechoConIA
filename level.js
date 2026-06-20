@@ -145,15 +145,32 @@ export function generateLevel(scene) {
                 mesh = new THREE.Mesh(geometry, material);
                 break;
             case 'column':
-                geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
+                const cProps = obj.properties || { radiusTop: 0.5, radiusBottom: 0.5, height: 1, radialSegments: 16 };
+                geometry = new THREE.CylinderGeometry(cProps.radiusTop || 0.5, cProps.radiusBottom || 0.5, cProps.height || 1, cProps.radialSegments || 16);
                 material = matPillar;
                 mesh = new THREE.Mesh(geometry, material);
                 break;
             case 'ramp':
-                geometry = new THREE.CylinderGeometry(1, 1, 1, 3);
-                material = matWall; // O un material de rampa
-                geometry.rotateX(Math.PI / 2);
-                geometry.rotateZ(Math.PI / 6);
+                geometry = new THREE.BufferGeometry();
+                const vertices = new Float32Array([
+                    -0.5, -0.5,  0.5,
+                     0.5, -0.5,  0.5,
+                    -0.5, -0.5, -0.5,
+                     0.5, -0.5, -0.5,
+                    -0.5,  0.5, -0.5,
+                     0.5,  0.5, -0.5
+                ]);
+                const indices = [
+                    0, 1, 3,  0, 3, 2,
+                    2, 3, 5,  2, 5, 4,
+                    0, 5, 1,  0, 4, 5,
+                    0, 2, 4,
+                    1, 5, 3
+                ];
+                geometry.setIndex(indices);
+                geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                geometry.computeVertexNormals();
+                material = matWall;
                 mesh = new THREE.Mesh(geometry, material);
                 break;
             case 'chest':
@@ -168,7 +185,8 @@ export function generateLevel(scene) {
                 isGroup = true;
                 break;
             case 'portal':
-                geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+                const pProps = obj.properties || { radiusTop: 0.5, radiusBottom: 0.5, height: 1, radialSegments: 32 };
+                geometry = new THREE.CylinderGeometry(pProps.radiusTop || 0.5, pProps.radiusBottom || 0.5, pProps.height || 1, pProps.radialSegments || 32);
                 material = new THREE.MeshLambertMaterial({ color: 0x2e1d0c });
                 mesh = new THREE.Mesh(geometry, material);
                 obj.mesh = mesh; // Para el raycaster interactivo
@@ -211,4 +229,59 @@ export function generateLevel(scene) {
     ].forEach(enemy => { state.currentLevelGroup.add(enemy.mesh); state.activeEnemies.push(enemy); });
     
     scene.add(state.currentLevelGroup);
+}
+
+export function showHitboxes(scene) {
+    if (!state.debugHitboxes) return;
+    hideHitboxes(scene); // Limpiar previos
+    
+    const matOBB = new THREE.MeshBasicMaterial({ color: 0x9b59b6, wireframe: true, transparent: true, opacity: 0.5 });
+    const matCol = new THREE.MeshBasicMaterial({ color: 0x3498db, wireframe: true });
+    const matPlayer = new THREE.MeshBasicMaterial({ color: 0x2ecc71, wireframe: true });
+    const matPortal = new THREE.MeshBasicMaterial({ color: 0xe74c3c, wireframe: true });
+
+    // Jugador
+    const playerGeo = new THREE.CylinderGeometry(1.0, 1.0, 1.8, 16);
+    state.playerDebugMesh = new THREE.Mesh(playerGeo, matPlayer);
+    scene.add(state.playerDebugMesh);
+    state.debugMeshes.push(state.playerDebugMesh);
+
+    // Entorno
+    for (const obj of state.mapObjects) {
+        const pos = obj.pos || [obj.x || 0, (obj.height/2) || 0, obj.z || 0];
+        const scale = obj.scale || [
+            obj.width || (obj.radius ? obj.radius * 2 : 2),
+            obj.height || 8,
+            obj.depth || (obj.radius ? obj.radius * 2 : 2)
+        ];
+        const rotY = obj.rot ? (obj.rot[1] * Math.PI / 180) : ((obj.rotationY || 0));
+
+        let mesh;
+        if (obj.type === 'column') {
+            mesh = new THREE.Mesh(new THREE.CylinderGeometry(scale[0]/2, scale[0]/2, scale[1], 16), matCol);
+            mesh.position.set(pos[0], pos[1], pos[2]);
+        } else if (obj.type === 'wall' || obj.type === 'chest' || obj.type === 'ramp') {
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), matOBB);
+            mesh.scale.set(scale[0], scale[1], scale[2]);
+            mesh.position.set(pos[0], pos[1], pos[2]);
+            mesh.rotation.y = rotY;
+        } else if (obj.type === 'portal') {
+            mesh = new THREE.Mesh(new THREE.CylinderGeometry(scale[0]/2, scale[0]/2, scale[1], 16), matPortal);
+            mesh.position.set(pos[0], pos[1], pos[2]);
+        }
+
+        if (mesh) {
+            scene.add(mesh);
+            state.debugMeshes.push(mesh);
+        }
+    }
+}
+
+export function hideHitboxes(scene) {
+    for (const mesh of state.debugMeshes) {
+        scene.remove(mesh);
+        if (mesh.geometry) mesh.geometry.dispose();
+    }
+    state.debugMeshes = [];
+    state.playerDebugMesh = null;
 }

@@ -19,9 +19,13 @@ export async function loadMap() {
         if (!response.ok) throw new Error('Error al cargar mapa.json');
         const data = await response.json();
         
-        // Reemplazar el array conservando la referencia para evitar romper imports si existieran (aunque usamos `state.mapObjects` también)
+        // Reemplazar el array conservando la referencia para evitar romper imports si existieran
         mapObjects.length = 0; 
-        data.forEach(obj => mapObjects.push(obj));
+        
+        // Retrocompatibilidad con el array viejo vs nuevo objeto con metadata
+        const objectsToLoad = Array.isArray(data) ? data : (data.objects || []);
+        
+        objectsToLoad.forEach(obj => mapObjects.push(obj));
         
         // Asegurar que el estado apunte al mismo array
         state.mapObjects = mapObjects;
@@ -69,13 +73,65 @@ export const state = {
 
     // Referencias a la escena
     controls: null, swordGroup: null, rFist: null, leftArmGroup: null, rightArmGroup: null, flashlight: null,
-    crystals: [], npcs: [], worldItems: [], activeEnemies: [], openedChests: new Set(), currentLevelGroup: null
+    crystals: [], npcs: [], worldItems: [], activeEnemies: [], openedChests: new Set(), currentLevelGroup: null,
+    
+    // Debug
+    debugHitboxes: false, debugMeshes: [], playerDebugMesh: null
 };
 
 // Item inicial
 state.inventorySlots[0] = { name: "Espada de Hierro", color: 0x999999 };
 
 // --- LÓGICA DE UTILIDAD GLOBAL ---
+export function getFloorHeight(x, z) {
+    let maxFloor = 0; // Suelo base
+    const floorRadius = 0.3; // Radio más estricto para no subirse a paredes al rozarlas
+
+    for (const obj of state.mapObjects) {
+        const pos = obj.pos || [obj.x || 0, (obj.height/2) || 0, obj.z || 0];
+        const scale = obj.scale || [
+            obj.width || (obj.radius ? obj.radius * 2 : 2),
+            obj.height || 8,
+            obj.depth || (obj.radius ? obj.radius * 2 : 2)
+        ];
+
+        const hw = scale[0] / 2;
+        const hd = scale[2] / 2;
+        const rotY = obj.rot ? (obj.rot[1] * Math.PI / 180) : ((obj.rotationY || 0));
+
+        const dx = x - pos[0];
+        const dz = z - pos[2];
+        const cosRot = Math.cos(-rotY);
+        const sinRot = Math.sin(-rotY);
+        const localX = dx * cosRot - dz * sinRot;
+        const localZ = dx * sinRot + dz * cosRot;
+
+        let objMaxY = pos[1] + scale[1] / 2;
+
+        if (obj.type === 'column') {
+            const dist = Math.hypot(dx, dz);
+            if (dist < (scale[0] / 2) + floorRadius) {
+                if (objMaxY > maxFloor) maxFloor = objMaxY;
+            }
+        } else if (obj.type === 'wall' || obj.type === 'chest') {
+            if (Math.abs(localX) < (hw + floorRadius) && Math.abs(localZ) < (hd + floorRadius)) {
+                if (objMaxY > maxFloor) maxFloor = objMaxY;
+            }
+        } else if (obj.type === 'ramp') {
+            if (Math.abs(localX) < (hw + floorRadius) && Math.abs(localZ) < (hd + floorRadius)) {
+                // Cálculo lineal de altura para la rampa
+                // Base de la rampa en Z local = hd (Frontal)
+                // Cima de la rampa en Z local = -hd (Trasero)
+                let clampedZ = Math.max(-hd, Math.min(hd, localZ));
+                let t = 0.5 - (clampedZ / scale[2]); // Va de 0 a 1
+                let rampY = (pos[1] - scale[1] / 2) + (t * scale[1]);
+                if (rampY > maxFloor) maxFloor = rampY;
+            }
+        }
+    }
+    return maxFloor;
+}
+
 export function checkMapCollision(x, y, z) {
     for (const obj of state.mapObjects) {
         const pos = obj.pos || [obj.x || 0, (obj.height/2) || 0, obj.z || 0];
@@ -92,23 +148,114 @@ export function checkMapCollision(x, y, z) {
         const feetY = y - 1.6;
         const headY = y + 0.2;
         
-        if (headY >= minY && feetY <= maxY) {
+        // Si los pies están por encima (o casi) del techo del objeto, no colisionamos horizontalmente.
+        // Tolerancia de 0.1 para que la gravedad dinámica lo asiente sin atascarlo.
+        if (headY > minY && feetY < maxY - 0.1) {
             if (obj.type === 'column') {
                 const dist = Math.hypot(x - pos[0], z - pos[2]);
                 if (dist < playerRadius + (scale[0] / 2)) return obj.type;
             } else if (obj.type === 'wall' || obj.type === 'chest' || obj.type === 'ramp') {
-                // Rotations will make exact AABB harder, but we use an approximation based on scale for now
                 const hw = scale[0] / 2;
                 const hd = scale[2] / 2;
-                const minX = pos[0] - hw - playerRadius;
-                const maxX = pos[0] + hw + playerRadius;
-                const minZ = pos[2] - hd - playerRadius;
-                const maxZ = pos[2] + hd + playerRadius;
-                if (x > minX && x < maxX && z > minZ && z < maxZ) return obj.type;
+                
+                const rotY = obj.rot ? (obj.rot[1] * Math.PI / 180) : ((obj.rotationY || 0));
+                
+                const dx = x - pos[0];
+                const dz = z - pos[2];
+                
+                // Rotación inversa correcta hacia el espacio local
+                const cosRot = Math.cos(-rotY);
+                const sinRot = Math.sin(-rotY);
+                const localX = dx * cosRot - dz * sinRot;
+                const localZ = dx * sinRot + dz * cosRot;
+                
+                if (Math.abs(localX) < (hw + playerRadius) && Math.abs(localZ) < (hd + playerRadius)) {
+                    return obj.type;
+                }
             }
         }
     }
     return 0;
+}
+
+export function resolveMapCollisions(x, y, z) {
+    let resX = x;
+    let resZ = z;
+    const feetY = y - 1.6;
+    const headY = y + 0.2;
+
+    // Ejecutamos varias iteraciones para resolver esquinas o rebotes en cadena
+    for (let iter = 0; iter < 3; iter++) {
+        let hasCollision = false;
+        
+        for (const obj of state.mapObjects) {
+            const pos = obj.pos || [obj.x || 0, (obj.height/2) || 0, obj.z || 0];
+            const scale = obj.scale || [
+                obj.width || (obj.radius ? obj.radius * 2 : 2),
+                obj.height || 8,
+                obj.depth || (obj.radius ? obj.radius * 2 : 2)
+            ];
+
+            const halfH = scale[1] / 2;
+            const minY = pos[1] - halfH;
+            const maxY = pos[1] + halfH;
+            
+            if (headY > minY && feetY < maxY - 0.1) {
+                if (obj.type === 'column') {
+                    const dist = Math.hypot(resX - pos[0], resZ - pos[2]);
+                    const minDist = playerRadius + (scale[0] / 2);
+                    if (dist < minDist && dist > 0) {
+                        const overlap = minDist - dist;
+                        const nx = (resX - pos[0]) / dist;
+                        const nz = (resZ - pos[2]) / dist;
+                        resX += nx * overlap;
+                        resZ += nz * overlap;
+                        hasCollision = true;
+                    }
+                } else if (obj.type === 'wall' || obj.type === 'chest' || obj.type === 'ramp') {
+                    const hw = scale[0] / 2;
+                    const hd = scale[2] / 2;
+                    
+                    const rotY = obj.rot ? (obj.rot[1] * Math.PI / 180) : ((obj.rotationY || 0));
+                    
+                    const dx = resX - pos[0];
+                    const dz = resZ - pos[2];
+                    
+                    const cosRot = Math.cos(-rotY);
+                    const sinRot = Math.sin(-rotY);
+                    const localX = dx * cosRot - dz * sinRot;
+                    const localZ = dx * sinRot + dz * cosRot;
+                    
+                    if (Math.abs(localX) < (hw + playerRadius) && Math.abs(localZ) < (hd + playerRadius)) {
+                        const overlapX = (hw + playerRadius) - Math.abs(localX);
+                        const overlapZ = (hd + playerRadius) - Math.abs(localZ);
+                        
+                        let pushLocalX = 0;
+                        let pushLocalZ = 0;
+                        
+                        // Empujamos en la dirección de menor penetración
+                        if (overlapX < overlapZ) {
+                            pushLocalX = Math.sign(localX) * overlapX;
+                        } else {
+                            pushLocalZ = Math.sign(localZ) * overlapZ;
+                        }
+                        
+                        // Rotar el empuje de vuelta al espacio global (rotación inversa a -rotY es rotY)
+                        const cosRotGlobal = Math.cos(rotY);
+                        const sinRotGlobal = Math.sin(rotY);
+                        const globalPushX = pushLocalX * cosRotGlobal - pushLocalZ * sinRotGlobal;
+                        const globalPushZ = pushLocalX * sinRotGlobal + pushLocalZ * cosRotGlobal;
+                        
+                        resX += globalPushX;
+                        resZ += globalPushZ;
+                        hasCollision = true;
+                    }
+                }
+            }
+        }
+        if (!hasCollision) break;
+    }
+    return { x: resX, z: resZ };
 }
 
 export function updateInventoryUI() {
