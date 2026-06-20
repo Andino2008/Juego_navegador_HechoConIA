@@ -124,37 +124,74 @@ export function generateLevel(scene) {
     dungeonFloor.position.set(100, 0.01, 100);
     state.currentLevelGroup.add(dungeonFloor);
 
-    state.mapObjects.forEach(obj => {
-        if (obj.mesh) obj.mesh = null; // Limpieza preventiva de referencias
+    const DEG2RAD = Math.PI / 180;
 
-        if (obj.type === 'wall') {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(obj.width, obj.height, obj.depth), matWall);
-            mesh.position.set(obj.x, obj.height / 2, obj.z);
-            if (obj.rotationY !== undefined) mesh.rotation.y = obj.rotationY;
-            state.currentLevelGroup.add(mesh);
-        } else if (obj.type === 'column') {
-            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(obj.radius, obj.radius, obj.height, 16), matPillar);
-            mesh.position.set(obj.x, obj.height / 2, obj.z);
-            state.currentLevelGroup.add(mesh);
-        } else if (obj.type === 'chest' || obj.type === 'opened_chest') {
-            if (obj.type === 'chest') {
-                const group = new THREE.Group();
-                const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(obj.width, obj.height / 2, obj.depth), matPillar);
-                baseMesh.position.y = obj.height / 4;
-                const topMesh = new THREE.Mesh(new THREE.ConeGeometry(obj.width / 1.5, obj.height / 1.5, 4), matWall);
-                topMesh.position.y = obj.height / 2 + obj.height / 3;
-                group.add(baseMesh, topMesh);
-                group.position.set(obj.x, 0, obj.z);
-                if (obj.rotationY !== undefined) group.rotation.y = obj.rotationY;
-                state.currentLevelGroup.add(group);
-            }
-        } else if (obj.type === 'portal') {
-            // Renderiza el portal como una trampilla de madera oscura
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(obj.width, obj.height, obj.depth), new THREE.MeshLambertMaterial({ color: 0x2e1d0c }));
-            mesh.position.set(obj.x, obj.height / 2, obj.z);
-            state.currentLevelGroup.add(mesh);
-            obj.mesh = mesh; // Guardar referencia para detección de mirada (Raycasting)
+    state.mapObjects.forEach(obj => {
+        if (obj.mesh) obj.mesh = null;
+
+        // Soporte para nuevo formato {pos, rot, scale}
+        // Si viene del formato viejo, se intentará usar valores por defecto para evitar crash
+        const pos = obj.pos || [obj.x || 0, (obj.height/2) || 0, obj.z || 0];
+        const rot = obj.rot || [0, (obj.rotationY || 0) * (180/Math.PI), 0];
+        
+        let geometry, material;
+        let isGroup = false;
+        let mesh;
+
+        switch (obj.type) {
+            case 'wall':
+                geometry = new THREE.BoxGeometry(1, 1, 1);
+                material = matWall;
+                mesh = new THREE.Mesh(geometry, material);
+                break;
+            case 'column':
+                geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
+                material = matPillar;
+                mesh = new THREE.Mesh(geometry, material);
+                break;
+            case 'ramp':
+                geometry = new THREE.CylinderGeometry(1, 1, 1, 3);
+                material = matWall; // O un material de rampa
+                geometry.rotateX(Math.PI / 2);
+                geometry.rotateZ(Math.PI / 6);
+                mesh = new THREE.Mesh(geometry, material);
+                break;
+            case 'chest':
+            case 'opened_chest':
+                // Para mantener el diseño visual del cofre pero escalable
+                mesh = new THREE.Group();
+                const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1), matPillar);
+                baseMesh.position.y = -0.25; // Centrar relativo a la escala
+                const topMesh = new THREE.Mesh(new THREE.ConeGeometry(0.7, 0.7, 4), matWall);
+                topMesh.position.y = 0.35;
+                mesh.add(baseMesh, topMesh);
+                isGroup = true;
+                break;
+            case 'portal':
+                geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+                material = new THREE.MeshLambertMaterial({ color: 0x2e1d0c });
+                mesh = new THREE.Mesh(geometry, material);
+                obj.mesh = mesh; // Para el raycaster interactivo
+                break;
+            default:
+                return;
         }
+
+        mesh.position.set(pos[0], pos[1], pos[2]);
+        mesh.rotation.set(rot[0] * DEG2RAD, rot[1] * DEG2RAD, rot[2] * DEG2RAD);
+        
+        if (obj.scale) {
+            mesh.scale.set(obj.scale[0], obj.scale[1], obj.scale[2]);
+        } else {
+            // Compatibilidad vieja
+            if (obj.type === 'wall' || obj.type === 'chest' || obj.type === 'portal') {
+                mesh.scale.set(obj.width || 2, obj.height || 2, obj.depth || 2);
+            } else if (obj.type === 'column') {
+                mesh.scale.set((obj.radius || 1) * 2, obj.height || 8, (obj.radius || 1) * 2);
+            }
+        }
+
+        state.currentLevelGroup.add(mesh);
     });
 
     // Mantengo un par de cristales e items en posiciones fijas como en tu código original para no romper cosas

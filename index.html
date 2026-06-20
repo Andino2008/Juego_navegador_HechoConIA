@@ -629,8 +629,8 @@
                 const newX = pos.x, newZ = pos.z;
                 pos.set(oldX, pos.y, oldZ);
                 
-                if (!checkMapCollision(newX, oldZ)) pos.x = newX;
-                if (!checkMapCollision(pos.x, newZ)) pos.z = newZ;
+                if (!checkMapCollision(newX, pos.y, oldZ)) pos.x = newX;
+                if (!checkMapCollision(pos.x, pos.y, newZ)) pos.z = newZ;
 
                 state.physicsPosition.copy(camera.position);
 

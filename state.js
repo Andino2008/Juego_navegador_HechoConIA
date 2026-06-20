@@ -76,19 +76,36 @@ export const state = {
 state.inventorySlots[0] = { name: "Espada de Hierro", color: 0x999999 };
 
 // --- LÓGICA DE UTILIDAD GLOBAL ---
-export function checkMapCollision(x, z) {
+export function checkMapCollision(x, y, z) {
     for (const obj of state.mapObjects) {
-        if (obj.type === 'column') {
-            const dist = Math.hypot(x - obj.x, z - obj.z);
-            if (dist < playerRadius + obj.radius) return obj.type;
-        } else if (obj.type === 'wall' || obj.type === 'chest') {
-            const hw = obj.width / 2;
-            const hd = obj.depth / 2;
-            const minX = obj.x - hw - playerRadius;
-            const maxX = obj.x + hw + playerRadius;
-            const minZ = obj.z - hd - playerRadius;
-            const maxZ = obj.z + hd + playerRadius;
-            if (x > minX && x < maxX && z > minZ && z < maxZ) return obj.type;
+        const pos = obj.pos || [obj.x || 0, (obj.height/2) || 0, obj.z || 0];
+        const scale = obj.scale || [
+            obj.width || (obj.radius ? obj.radius * 2 : 2),
+            obj.height || 8,
+            obj.depth || (obj.radius ? obj.radius * 2 : 2)
+        ];
+
+        const halfH = scale[1] / 2;
+        const minY = pos[1] - halfH;
+        const maxY = pos[1] + halfH;
+        
+        const feetY = y - 1.6;
+        const headY = y + 0.2;
+        
+        if (headY >= minY && feetY <= maxY) {
+            if (obj.type === 'column') {
+                const dist = Math.hypot(x - pos[0], z - pos[2]);
+                if (dist < playerRadius + (scale[0] / 2)) return obj.type;
+            } else if (obj.type === 'wall' || obj.type === 'chest' || obj.type === 'ramp') {
+                // Rotations will make exact AABB harder, but we use an approximation based on scale for now
+                const hw = scale[0] / 2;
+                const hd = scale[2] / 2;
+                const minX = pos[0] - hw - playerRadius;
+                const maxX = pos[0] + hw + playerRadius;
+                const minZ = pos[2] - hd - playerRadius;
+                const maxZ = pos[2] + hd + playerRadius;
+                if (x > minX && x < maxX && z > minZ && z < maxZ) return obj.type;
+            }
         }
     }
     return 0;

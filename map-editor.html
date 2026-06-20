@@ -3,63 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de Mapas 2D</title>
+    <title>Editor de Mapas 3D - Run_Escape</title>
     <link rel="stylesheet" href="map-editor.css">
 </head>
 <body>
     <div id="app">
+        <!-- Panel Lateral -->
         <aside id="sidebar">
             <div class="sidebar-header">
-                <h2>Editor de Mapas</h2>
+                <h2>Editor 3D MMO</h2>
             </div>
             
             <div class="tools-section">
-                <h3>Herramientas</h3>
+                <h3>Añadir Primitivas</h3>
                 <div class="tool-grid">
-                    <button class="tool-btn active" data-tool="wall" title="Muro">
-                        <div class="icon-wall"></div> Muro
+                    <button class="tool-btn" data-spawn="wall" title="Caja/Muro">
+                        Muro
                     </button>
-                    <button class="tool-btn" data-tool="column" title="Columna">
-                        <div class="icon-column"></div> Columna
+                    <button class="tool-btn" data-spawn="column" title="Cilindro/Columna">
+                        Columna
                     </button>
-                    <button class="tool-btn" data-tool="chest" title="Cofre">
-                        <div class="icon-chest"></div> Cofre
+                    <button class="tool-btn" data-spawn="ramp" title="Prisma/Rampa">
+                        Rampa
                     </button>
-                    <button class="tool-btn" data-tool="portal" title="Portal">
-                        <div class="icon-portal"></div> Portal
+                    <button class="tool-btn" data-spawn="chest" title="Cofre">
+                        Cofre
                     </button>
-                    <button class="tool-btn danger" data-tool="erase" title="Borrar">
-                        <div class="icon-erase"></div> Borrar
+                    <button class="tool-btn" data-spawn="portal" title="Portal">
+                        Portal
                     </button>
                 </div>
             </div>
 
-            <div class="properties-section" id="properties-panel">
-                <h3>Propiedades <span id="prop-type"></span></h3>
-                <div id="prop-fields">
-                    <!-- Dynamic fields will be injected here -->
-                    <p class="hint">Selecciona una herramienta para ver sus propiedades.</p>
+            <div class="properties-section">
+                <h3>Transformación (T, R, E)</h3>
+                <div class="tool-grid">
+                    <button class="transform-btn active" data-mode="translate">Mover (T)</button>
+                    <button class="transform-btn" data-mode="rotate">Rotar (R)</button>
+                    <button class="transform-btn" data-mode="scale">Escalar (E)</button>
                 </div>
+                
+                <h3 style="margin-top: 15px;">Ajustes de Snapping</h3>
+                <div class="prop-group">
+                    <label>Grid Snap (Unidades)</label>
+                    <select id="snap-select">
+                        <option value="1">1 Unidad</option>
+                        <option value="2" selected>2 Unidades</option>
+                        <option value="4">4 Unidades</option>
+                        <option value="8">8 Unidades</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="properties-section" id="object-properties" style="display:none;">
+                <h3>Objeto Seleccionado</h3>
+                <p id="selected-type" style="color: var(--accent); font-weight: bold; margin-bottom: 10px;">-</p>
+                <div id="dynamic-properties"></div>
+                <button id="btn-delete" class="action-btn secondary" style="margin-top: 10px;">Borrar Objeto (Supr)</button>
             </div>
 
             <div class="actions-section">
+                <input type="file" id="file-import" accept=".json" style="display: none;" />
+                <button id="btn-import" class="action-btn secondary">Importar JSON</button>
                 <button id="btn-export" class="action-btn primary">Exportar mapa.json</button>
-                <button id="btn-clear" class="action-btn secondary">Limpiar Todo</button>
+                <button id="btn-clear" class="action-btn secondary" style="border-color: var(--danger);">Limpiar Escena</button>
                 <a href="index.html" class="action-btn play-btn" target="_blank">Probar Juego</a>
             </div>
         </aside>
         
-        <main id="editor-main">
-            <div class="canvas-container">
-                <canvas id="mapCanvas"></canvas>
-            </div>
-            <div class="status-bar">
-                <span id="coord-display">X: 0, Z: 0</span>
-                <span>Zoom: <span id="zoom-display">100%</span></span>
-            </div>
+        <!-- Viewport 3D -->
+        <main id="editor-viewport">
+            <!-- Three.js Canvas será inyectado aquí -->
         </main>
     </div>
     
-    <script src="map-editor.js"></script>
+    <!-- Import Maps para Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- Entry point modular -->
+    <script type="module" src="editor/main.js"></script>
 </body>
 </html>
